@@ -1,12 +1,13 @@
 #!/bin/sh
-# Installs the Logix fleet-monitor demo into Hermes.
-# Usage (in Hermes terminal): sh install.sh
+# Installs / updates the Logix fleet-monitor demo in Hermes.
 set -e
 DEST=/data/logistics-agent
-cp "$DEST/AGENTS.md" "$DEST/AGENTS.md.bak_before_monitor"
+[ -f "$DEST/AGENTS.md.bak_before_monitor" ] || cp "$DEST/AGENTS.md" "$DEST/AGENTS.md.bak_before_monitor"
 mkdir -p "$DEST/data/snapshots"
 cp monitor.py "$DEST/monitor.py"
 cp $(ls data/snapshots/fleet_*.csv 2>/dev/null || ls fleet_*.csv) "$DEST/data/snapshots/"
-grep -q "## Monitor and replan" "$DEST/AGENTS.md" || cat AGENTS_monitor.md >> "$DEST/AGENTS.md"
+# replace the old "Monitor and replan" section (always the last section) with the new one
+sed -i '/^## Monitor and replan/,$d' "$DEST/AGENTS.md"
+cat AGENTS_monitor.md >> "$DEST/AGENTS.md"
 python3 "$DEST/monitor.py" --reset
-echo "Installed. Backup: $DEST/AGENTS.md.bak_before_monitor"
+echo "Installed. Original backup: $DEST/AGENTS.md.bak_before_monitor"
