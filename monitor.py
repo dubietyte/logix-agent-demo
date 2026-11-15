@@ -11,6 +11,7 @@ Usage:
   python3 monitor.py data/snapshots/fleet_14-30.csv --prev data/snapshots/fleet_14-00.csv
   python3 monitor.py --next        # runs the next snapshot in order (demo mode)
   python3 monitor.py --reset       # start the demo again from the first snapshot
+  python3 monitor.py --approve ORD-103 DEMO05 15:00   # save an approved swap
 """
 import csv
 import math
@@ -25,6 +26,17 @@ DAILY_REST_H = 11       # normal daily rest (9 h reduced possible)
 LATE_LIMIT_MIN = 15     # report as late if more than this
 SNAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "snapshots")
 STATE_FILE = os.path.join(SNAP_DIR, ".last_check")
+DECISIONS = os.path.join(SNAP_DIR, "decisions.csv")   # approved swaps: task_id,new_plate,approved_at
+
+
+def approved_swaps():
+    """{task_id: (new_plate, approved_at)} - written by the agent after the dispatcher says yes."""
+    out = {}
+    if os.path.exists(DECISIONS):
+        for r in csv.reader(open(DECISIONS, encoding="utf-8")):
+            if len(r) >= 2 and r[0] != "task_id":
+                out[r[0].strip()] = (r[1].strip(), r[2].strip() if len(r) > 2 else "")
+    return out
 
 
 def hm(s):
@@ -146,6 +158,11 @@ def report(path, prev_path=None):
                 prev_keys.add((r["plate"], kind))
 
     problems, free, ok = check(rows)
+    swaps = approved_swaps()
+    busy = {p for p, _ in swaps.values()}
+    free = [(r, n) for r, n in free if r["plate"] not in busy]
+    handled = [(r, f) for r, f in problems if r["task_id"] in swaps]
+    problems = [(r, f) for r, f in problems if r["task_id"] not in swaps]
     print(f"=== FLEET CHECK  data_time {rows[0]['data_time']}  file {os.path.basename(path)} ===")
     if not problems:
         print("STATUS: ALL OK - nothing to report to the dispatcher.")
@@ -167,6 +184,10 @@ def report(path, prev_path=None):
                     print(f"    * {rr['plate']} at {rr['location']}: ~{km:.0f} km, ETA {e:%H:%M}, Clock {rr['clock']}, Bed {rr['bed']}, lang {rr['driver_lang']}")
             else:
                 print("  replacement candidates: none free")
+    for r, f in handled:
+        newp, when = swaps[r["task_id"]]
+        print(f"\n[HANDLED] {r['task_id']} already moved from {r['plate']} to {newp} (approved {when}). "
+              f"Do not suggest it again. {r['plate']} is free for another job; {newp} is busy with {r['task_id']}.")
     print("\n[FREE TRUCKS]")
     for r, note in free or []:
         print(f"  {r['plate']} at {r['location']} - {note} (Clock {r['clock']}, Bed {r['bed']})")
@@ -184,9 +205,18 @@ def snapshots():
 def main():
     args = sys.argv[1:]
     if args and args[0] == "--reset":
-        if os.path.exists(STATE_FILE):
-            os.remove(STATE_FILE)
+        for f in (STATE_FILE, DECISIONS):
+            if os.path.exists(f):
+                os.remove(f)
         print("Demo reset. Next check: " + snapshots()[0])
+        return
+    if args and args[0] == "--approve":
+        new = not os.path.exists(DECISIONS)
+        with open(DECISIONS, "a", encoding="utf-8") as f:
+            if new:
+                f.write("task_id,new_plate,approved_at\n")
+            f.write(f"{args[1]},{args[2]},{args[3] if len(args) > 3 else ''}\n")
+        print(f"Saved: {args[1]} -> {args[2]}")
         return
     if args and args[0] == "--next":
         snaps = snapshots()
