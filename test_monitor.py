@@ -135,7 +135,7 @@ def _():
     rows = [row(task_id="ORD-9", task_type="loading", task_fix="yes", goods_on_board="no", task_time="2026-11-18 09:00"),
             free(plate="NEW1")]
     out = run_report(rows, decisions=[("ORD-9", "NEW1", "09:30")])
-    return "[HANDLED] ORD-9" in out and "[PROBLEM]" not in out and "NEW1 at" not in out.split("[FREE TRUCKS]")[1]
+    return "[HANDLED] ORD-9" in out and "[PROBLEM" not in out and "NEW1 at" not in out.split("[FREE TRUCKS]")[1]
 
 
 @test("S12 same problem in next check -> ONGOING (not NEW)")
@@ -197,6 +197,18 @@ def _():
     return "MUST_REST_NOW" in out and "MUST REST FIRST" in out
 
 
+@test("S21 fixed priority order: MISSED_FIX, MUST_REST, LATE to FIX, other LATE (biggest first), REST_SOON")
+def _():
+    out = run_report([row(plate="LATE_SMALL", task_time="2026-11-18 11:00", km_left="120"),
+                      row(plate="REST_SOON", bed="0:31", clock="0:33", task_time="2026-11-20 10:00", km_left="80"),
+                      row(plate="LATE_BIG", task_time="2026-11-18 11:00", km_left="250"),
+                      row(plate="LATE_FIX", task_fix="yes", task_time="2026-11-18 11:00", km_left="100"),
+                      row(plate="REST_NOW", bed="0:00", task_time="2026-11-20 10:00"),
+                      row(plate="MISSED", task_fix="yes", task_time="2026-11-18 09:00")])
+    order = [l.split("] ")[1].split(" ")[0] for l in out.splitlines() if l.startswith("[PROBLEM ")]
+    return order == ["MISSED", "REST_NOW", "LATE_FIX", "LATE_BIG", "LATE_SMALL", "REST_SOON"]
+
+
 # ---- 30-truck test day: expected problems per check ----
 DAY = {
     "08-00": {"DEMO23": ["LATE"]},
@@ -215,7 +227,7 @@ for hhmm, exp in DAY.items():
             ok = k == exp and any("DEMO27" in u for u in unk) and "DEMO26" not in f
             if hhmm in ("09-30", "10-00"):
                 out = run_report(m.load(os.path.join(DAY_DIR, f"fleet_{hhmm}.csv")))
-                block = out.split("[PROBLEM] DEMO12")[1].split("[PROBLEM]")[0]
+                block = out.split("] DEMO12")[1].split("[PROBLEM")[0]
                 ok = ok and block.split("* ")[1].startswith("DEMO20")   # best replacement = DEMO20 in Kaunas
             return ok
         return fn

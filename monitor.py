@@ -15,6 +15,7 @@ Usage:
   add  --dir data/day_test  to any command to use another snapshot folder (e.g. the 30-truck test day)
 """
 import csv
+import re
 import math
 import os
 import sys
@@ -190,6 +191,26 @@ def check(rows):
     return problems, free, ok, unknown
 
 
+def priority(item):
+    """Fixed order for the dispatcher: MISSED_FIX, MUST_REST_NOW, LATE to a FIX time,
+    other LATE (biggest delay first), REST_SOON."""
+    r, found = item
+    best = (9, 0)
+    for kind, txt in found:
+        if kind == "MISSED_FIX":
+            k = (0, 0)
+        elif kind == "MUST_REST_NOW":
+            k = (1, 0)
+        elif kind == "LATE":
+            mm = re.search(r"-> (\d+):(\d\d) late", txt)
+            delay = int(mm.group(1)) * 60 + int(mm.group(2)) if mm else 0
+            k = (2 if r["task_fix"].lower() == "yes" else 3, -delay)
+        else:
+            k = (4, 0)
+        best = min(best, k)
+    return best
+
+
 def replacements(task_row, free):
     """Free trucks that could reach the task address, best first."""
     out = []
@@ -222,13 +243,14 @@ def report(path, prev_path=None):
     free = [(r, n) for r, n in free if r["plate"] not in busy]
     handled = [(r, f) for r, f in problems if r["task_id"] in swaps]
     problems = [(r, f) for r, f in problems if r["task_id"] not in swaps]
+    problems.sort(key=priority)
     print(f"=== FLEET CHECK  data_time {rows[0]['data_time']}  file {os.path.basename(path)} ===")
     if not problems:
         print("STATUS: ALL OK - nothing to report to the dispatcher.")
     else:
         print(f"STATUS: {len(problems)} truck(s) with problems")
-    for r, found in problems:
-        print(f"\n[PROBLEM] {r['plate']} (driver {r['driver']}, lang {r['driver_lang']}) at {r['location']}")
+    for n, (r, found) in enumerate(problems, 1):
+        print(f"\n[PROBLEM {n} of {len(problems)}] {r['plate']} (driver {r['driver']}, lang {r['driver_lang']}) at {r['location']}")
         print(f"  driver message language: {LANG.get(r['driver_lang'].upper(), r['driver_lang'])} - write this driver's message ONLY in this language")
         if not (r["task_type"].strip() or r["task_time"].strip()):
             print("  no active task (free truck)")

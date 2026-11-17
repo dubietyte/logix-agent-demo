@@ -31,7 +31,7 @@ For each problem choose ONE action and give the reason in one sentence:
 - MISSED_FIX with goods on board -> keep truck, give the client the new ETA from monitor.py and ask the dispatcher if the client should be called.
 - REST_SOON -> warning only: one block, tell the driver to plan a safe parking place now (driver msg), client msg only if the ETA changes.
 - A free truck that MUST_REST_NOW -> driver msg to stop now; never suggest it as a replacement until it has rested.
-- Several problems at once -> start with the most urgent: MISSED_FIX, then MUST_REST_NOW, then LATE (biggest delay first), then REST_SOON.
+- Several problems at once -> ALWAYS answer in the exact order monitor.py prints them ([PROBLEM 1 of N], [PROBLEM 2 of N] ...). The script already sorts by urgency: MISSED_FIX, MUST_REST_NOW, LATE to a FIX time, other LATE (biggest delay first), REST_SOON. Never reorder.
 - Language "unknown" -> write the driver message in English and ask the dispatcher for the driver's language.
 - If data is "unknown" or looks wrong, say so and ask the dispatcher. Never guess.
 
