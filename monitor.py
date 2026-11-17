@@ -12,6 +12,7 @@ Usage:
   python3 monitor.py --next        # runs the next snapshot in order (demo mode)
   python3 monitor.py --reset       # start the demo again from the first snapshot
   python3 monitor.py --approve ORD-103 DEMO05 15:00   # save an approved swap
+  add  --dir data/day_test  to any command to use another snapshot folder (e.g. the 30-truck test day)
 """
 import csv
 import math
@@ -27,6 +28,23 @@ LATE_LIMIT_MIN = 15     # report as late if more than this
 SNAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "snapshots")
 STATE_FILE = os.path.join(SNAP_DIR, ".last_check")
 DECISIONS = os.path.join(SNAP_DIR, "decisions.csv")   # approved swaps: task_id,new_plate,approved_at
+
+
+def set_dir(path):
+    global SNAP_DIR, STATE_FILE, DECISIONS
+    base = os.path.dirname(os.path.abspath(__file__))
+    SNAP_DIR = path if os.path.isabs(path) else os.path.join(base, path)
+    STATE_FILE = os.path.join(SNAP_DIR, ".last_check")
+    DECISIONS = os.path.join(SNAP_DIR, "decisions.csv")
+
+
+def num(s):
+    """'12.5' -> 12.5; '' or 'unknown' -> None"""
+    s = (s or "").strip()
+    try:
+        return float(s)
+    except ValueError:
+        return None
 
 
 def approved_swaps():
@@ -89,13 +107,13 @@ def load(path):
 
 
 def check(rows):
-    """Returns (problems, free_trucks, ok_trucks)."""
-    problems, free, ok = [], [], []
+    """Returns (problems, free_trucks, ok_trucks, cannot_check)."""
+    problems, free, ok, unknown = [], [], [], []
     for r in rows:
         now = dt(r["data_time"])
         clock, cup, bed = hm(r["clock"]), hm(r["cup"]), hm(r["bed"])
         task_time = dt(r["task_time"])
-        km_left = float(r["km_left"]) if r["km_left"] not in ("", "unknown") else None
+        km_left = num(r["km_left"])
         nxt = dt(r["next_task_time"])
         plate = r["plate"]
 
@@ -122,17 +140,23 @@ def check(rows):
         # missed FIX
         if r["task_fix"].lower() == "yes" and task_time and now > task_time:
             late_h = (now - task_time).total_seconds() / 3600
-            found.append(("MISSED_FIX", f"FIX {r['task_type']} {r['task_time']} passed {fmt_h(late_h)} ago, task still open, {km_left:.0f} km left"))
+            left_txt = f"{km_left:.0f} km left" if km_left is not None else "km left unknown"
+            found.append(("MISSED_FIX", f"FIX {r['task_type']} {r['task_time']} passed {fmt_h(late_h)} ago, task still open, {left_txt}"))
         elif task_time and km_left is not None:
             e, math_txt = eta(now, km_left, clock, cup, bed)
             late_min = (e - task_time).total_seconds() / 60
             if late_min > LATE_LIMIT_MIN:
                 found.append(("LATE", f"ETA {e:%Y-%m-%d %H:%M} vs {r['task_type']} {r['task_time']}{' FIX' if r['task_fix'].lower()=='yes' else ''} -> {fmt_h(late_min/60)} late. Math: {math_txt}"))
             elif not found:
-                ok.append(f"{plate}: on time (ETA {e:%H:%M}, {r['task_type']} {task_time:%H:%M})")
+                fmt = "%H:%M" if e.date() == now.date() else "%d.%m %H:%M"
+                ok.append(f"{plate}: on time (ETA {e:{fmt}}, {r['task_type']} {task_time:{fmt}})")
+        if not found and task_time and (km_left is None or (clock is None and bed is None)):
+            miss = [k for k in ("km_left", "clock", "bed") if num(r[k]) is None and hm(r[k]) is None] if km_left is None \
+                else [k for k in ("clock", "cup", "bed") if hm(r[k]) is None]
+            unknown.append(f"{plate} ({r['task_id']} {r['task_type']} {r['task_time']}): cannot check, unknown {', '.join(miss)} - ask the dispatcher")
         if found:
             problems.append((r, found))
-    return problems, free, ok
+    return problems, free, ok, unknown
 
 
 def replacements(task_row, free):
@@ -141,6 +165,8 @@ def replacements(task_row, free):
     for r, note in free:
         if r["plate"] == task_row["plate"]:
             continue
+        if None in (num(r["lat"]), num(r["lon"]), num(task_row["task_lat"]), num(task_row["task_lon"])):
+            continue  # location unknown -> never guess
         km = km_between(float(r["lat"]), float(r["lon"]), float(task_row["task_lat"]), float(task_row["task_lon"]))
         now = dt(r["data_time"])
         e, _ = eta(now, km, hm(r["clock"]), hm(r["cup"]), hm(r["bed"]))
@@ -157,7 +183,7 @@ def report(path, prev_path=None):
             for kind, _ in found:
                 prev_keys.add((r["plate"], kind))
 
-    problems, free, ok = check(rows)
+    problems, free, ok, unknown = check(rows)
     swaps = approved_swaps()
     busy = {p for p, _ in swaps.values()}
     free = [(r, n) for r, n in free if r["plate"] not in busy]
@@ -193,6 +219,10 @@ def report(path, prev_path=None):
         print(f"  {r['plate']} at {r['location']} - {note} (Clock {r['clock']}, Bed {r['bed']})")
     if not free:
         print("  none")
+    if unknown:
+        print("\n[CANNOT CHECK] (data missing - do not guess, ask the dispatcher)")
+        for line in unknown:
+            print("  " + line)
     print("\n[OK]")
     for line in ok:
         print("  " + line)
@@ -204,6 +234,10 @@ def snapshots():
 
 def main():
     args = sys.argv[1:]
+    if "--dir" in args:
+        i = args.index("--dir")
+        set_dir(args[i + 1])
+        args = args[:i] + args[i + 2:]
     if args and args[0] == "--reset":
         for f in (STATE_FILE, DECISIONS):
             if os.path.exists(f):

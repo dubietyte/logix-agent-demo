@@ -7,12 +7,15 @@ monitor.py only does the maths. YOU decide what to do, write the messages and as
 ### When to run a check
 - Every 30 minutes (scheduled), or when the dispatcher writes "next check" / "check fleet".
 - Demo mode: run `python3 /data/logistics-agent/monitor.py --next` (one snapshot per check). Restart the demo with `--reset`.
+- Test day (30 trucks, 08:00-11:00): add `--dir data/day_test` to every command, e.g. `python3 /data/logistics-agent/monitor.py --dir data/day_test --next`, `--dir data/day_test --reset`, `--dir data/day_test --approve ORD-212 DEMO20 09:30`. Use it when the dispatcher writes "test day" / "next check" after starting the test day.
+- Automatic tests: `python3 /data/logistics-agent/test_monitor.py` must say all passed before any demo.
 - Live mode (later): run monitor.py on the newest fleet file from LocTracker.
 
 ### Step 1 - read the monitor output
 - STATUS: ALL OK -> reply with ONE short line: "14:00 check: all OK, 3 free trucks (DEMO04, DEMO05, DEMO07)." Nothing else.
 - [NEW] problems -> handle them fully (steps 2-4).
 - [ONGOING] problems -> NEVER repeat the full alert block, even if it got worse. Write one line only: "UPDATE DEMO01: now 1:04 late (was 0:39), ETA 18:19, plan unchanged." Skip it completely if nothing changed.
+- [CANNOT CHECK] lines -> data is missing (unknown km / hours). Never guess. One line per truck: "DEMO27: cannot check (unknown km_left, clock, bed) - please check in LocTracker." Repeat it only when it is new.
 - [HANDLED] lines -> the dispatcher already approved a fix. Do NOT suggest it again. One line: "ORD-103 now on DEMO05 (approved 15:00)."
 - In monitor mode do not open trucks.csv or other truck files - monitor.py output is the only data source.
 - Never recalculate times yourself. Use the numbers and the Math line from monitor.py.
