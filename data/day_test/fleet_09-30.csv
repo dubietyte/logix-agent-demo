@@ -1,0 +1,31 @@
+plate,driver,driver_lang,location,lat,lon,status,clock,cup,bed,task_id,task_type,task_address,task_lat,task_lon,task_time,task_fix,client,goods_on_board,km_left,next_task_time,data_time
+DEMO01,Jonas,LT,near Vilnius LT,53.7397,23.6343,driving,6:30,3:00,9:30,ORD-201,unloading,Warsaw PL,52.2297,21.0122,2026-11-18 16:00,no,Baltic Foods,yes,314,,2026-11-18 09:30
+DEMO02,Sergej,RU,near Klaipeda LT,55.4390,22.0505,driving,6:00,2:30,8:30,ORD-202,unloading,Klaipeda LT,55.7033,21.1443,2026-11-18 12:00,no,Port Logistics,yes,84,,2026-11-18 09:30
+DEMO03,Darius,LT,near Riga LV,56.9496,24.1052,driving,7:30,3:00,10:30,ORD-203-U,unloading,Tallinn EE,59.4370,24.7536,2026-11-18 17:00,no,Riga Retail,yes,363,,2026-11-18 09:30
+DEMO04,Evaldas,LT,Vilnius LT,54.6872,25.2797,resting,9:00,4:30,13:00,,,,,,,,,no,,,2026-11-18 09:30
+DEMO05,Piotr,PL,near Lodz PL,52.5810,20.6699,driving,6:30,2:30,9:30,ORD-205,unloading,Lodz PL,51.7592,19.4560,2026-11-18 13:15,no,Agro Trade,yes,159,,2026-11-18 09:30
+DEMO06,Viktor,RU,near Marijampole LT,53.9880,21.6469,driving,7:00,3:00,10:30,ORD-206,unloading,Poznan PL,52.4064,16.9252,2026-11-18 18:15,no,Nordic Paper,yes,466,,2026-11-18 09:30
+DEMO07,Oleg,RU,near Bialystok PL (traffic jam),52.8509,22.7252,driving,4:30,2:00,7:30,ORD-207,unloading,Kolbiel PL,52.0661,21.4886,2026-11-18 11:15,no,Baltic Foods,yes,157,,2026-11-18 09:30
+DEMO08,Andrius,LT,near Gdansk PL,54.9614,19.7730,driving,6:30,2:30,9:30,ORD-208,unloading,Gdansk PL,54.3520,18.6466,2026-11-18 12:45,no,Port Logistics,yes,128,,2026-11-18 09:30
+DEMO09,Igor,RU,near Tallinn EE,58.3159,24.4614,driving,7:30,3:00,10:30,ORD-209,unloading,Tallinn EE,59.4370,24.7536,2026-11-18 13:15,no,Estonia Trade,yes,164,,2026-11-18 09:30
+DEMO10,Mantas,LT,near Lublin PL,52.6265,23.2157,driving,7:30,3:00,10:30,ORD-210,unloading,Lublin PL,51.2465,22.5684,2026-11-18 13:45,no,Agro Trade,yes,207,,2026-11-18 09:30
+DEMO11,Dmitrij,RU,near Siauliai LT,55.8897,22.8903,driving,7:30,3:00,10:30,ORD-211-U,unloading,Klaipeda LT,55.7033,21.1443,2026-11-18 14:00,no,Baltic Foods,yes,144,,2026-11-18 09:30
+DEMO12,Marius,LT,near Panevezys LT (breakdown),55.3529,24.1502,other,5:30,2:30,8:30,ORD-212,loading,Kaunas LT,54.8985,23.9036,2026-11-18 10:00,yes,Nordic Paper,no,69,,2026-11-18 09:30
+DEMO13,Laurynas,LT,near Tartu EE,57.7170,25.5147,driving,7:30,3:00,10:30,ORD-213,unloading,Riga LV,56.9496,24.1052,2026-11-18 13:00,no,Riga Retail,yes,155,,2026-11-18 09:30
+DEMO14,Maksim,RU,near Bialystok PL,52.8050,22.3864,driving,6:30,3:00,9:30,ORD-214,loading,Bialystok PL,53.1325,23.1688,2026-11-18 12:00,yes,Agro Trade,no,83,,2026-11-18 09:30
+DEMO15,Paulius,LT,Vilnius LT,54.6872,25.2797,other,5:30,2:30,8:30,,,,,,,,,no,,,2026-11-18 09:30
+DEMO16,Taras,UA,near Warsaw PL,52.0996,21.2182,driving,7:30,3:00,10:30,ORD-216,unloading,Warsaw PL,52.2297,21.0122,2026-11-18 11:15,no,Baltic Foods,yes,26,,2026-11-18 09:30
+DEMO17,Arturas,LT,near Panevezys LT,55.9753,24.3075,driving,7:30,3:00,10:30,ORD-217-U,unloading,Riga LV,56.9496,24.1052,2026-11-18 14:00,no,Port Logistics,yes,142,,2026-11-18 09:30
+DEMO18,Andrej,RU,near Klaipeda LT,55.6103,23.1593,driving,5:00,2:30,0:00,ORD-218,unloading,Klaipeda LT,55.7033,21.1443,2026-11-19 00:15,no,Agro Trade,yes,165,,2026-11-18 09:30
+DEMO19,Krzysztof,PL,near Gdansk PL,53.5150,17.9060,driving,7:30,3:00,10:30,ORD-219,unloading,Poznan PL,52.4064,16.9252,2026-11-18 13:30,no,Nordic Paper,yes,181,,2026-11-18 09:30
+DEMO20,Vytautas,LT,Kaunas LT,54.8985,23.9036,resting,9:00,4:30,13:00,,,,,,,,,no,,,2026-11-18 09:30
+DEMO21,Nikolaj,RU,Jonava LT,55.0833,24.2833,other,8:00,4:30,12:00,,,,,,,,,no,,,2026-11-18 09:30
+DEMO22,Saulius,LT,Marijampole LT,54.5599,23.3541,resting,9:00,4:30,13:00,,,,,,,,,no,,2026-11-19 14:00,2026-11-18 09:30
+DEMO23,Tomas,LT,Lithuania-Latvia border (queue),56.0266,24.0145,other,5:30,2:30,7:30,ORD-223,unloading,Riga LV,56.9496,24.1052,2026-11-18 09:15,yes,Riga Retail,yes,134,,2026-11-18 09:30
+DEMO24,Aleksandr,RU,Klaipeda LT,55.7033,21.1443,resting,9:00,4:30,13:00,,,,,,,,,no,,,2026-11-18 09:30
+DEMO25,Gintaras,LT,Vilnius LT,54.6872,25.2797,resting,0:24,0:24,0:30,,,,,,,,,no,,,2026-11-18 09:30
+DEMO26,Robert,PL,Warsaw PL,52.2297,21.0122,resting,9:00,4:30,13:00,,,,,,,,,no,,2026-11-18 11:00,2026-11-18 09:30
+DEMO27,Pavel,RU,near Tallinn EE,57.4072,24.9784,driving,unknown,unknown,unknown,ORD-227,unloading,Tallinn EE,59.4370,24.7536,2026-11-18 15:00,no,Estonia Trade,yes,unknown,,2026-11-18 09:30
+DEMO28,Edgar,LT,Siauliai LT,55.9349,23.3137,other,9:00,4:30,13:00,,,,,,,,,no,,,2026-11-18 09:30
+DEMO29,Wojciech,PL,Bialystok PL,53.1325,23.1688,resting,9:00,4:30,13:00,,,,,,,,,no,,,2026-11-18 09:30
+DEMO30,Rokas,LT,near Vilnius LT,54.2566,22.9205,driving,6:30,2:30,7:30,ORD-230,unloading,Berlin DE,52.5200,13.4050,2026-11-19 10:00,no,Berlin Food,yes,853,,2026-11-18 09:30
