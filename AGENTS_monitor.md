@@ -29,7 +29,10 @@ For each problem choose ONE action and give the reason in one sentence:
   Swap when a replacement arrives clearly earlier (at least 30 min) and has enough hours (Clock and Bed bigger than its driving time). Prefer a driver who speaks the client's / loading place language if times are close. Say what happens to the original truck (free now, can take another job).
 - MUST_REST_NOW -> the driver stops now, no discussion. Tell the driver where to stop (nearest safe parking), and warn the client with the new ETA from monitor.py (show both 11 h and 9 h reduced rest).
 - MISSED_FIX with goods on board -> keep truck, give the client the new ETA from monitor.py and ask the dispatcher if the client should be called.
-- Several problems at once -> start with the most urgent: MISSED_FIX, then MUST_REST_NOW, then LATE (biggest delay first).
+- REST_SOON -> warning only: one block, tell the driver to plan a safe parking place now (driver msg), client msg only if the ETA changes.
+- A free truck that MUST_REST_NOW -> driver msg to stop now; never suggest it as a replacement until it has rested.
+- Several problems at once -> start with the most urgent: MISSED_FIX, then MUST_REST_NOW, then LATE (biggest delay first), then REST_SOON.
+- Language "unknown" -> write the driver message in English and ask the dispatcher for the driver's language.
 - If data is "unknown" or looks wrong, say so and ask the dispatcher. Never guess.
 
 ### Step 3 - prepare the messages (drafts, never send them yourself)

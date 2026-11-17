@@ -25,6 +25,7 @@ ROAD_FACTOR = 1.3       # straight line -> road km (rough, for replacements only
 BREAK_H = 0.75          # 45-min break
 DAILY_REST_H = 11       # normal daily rest (9 h reduced possible)
 LATE_LIMIT_MIN = 15     # report as late if more than this
+REST_SOON_H = 0.75      # warn when less than 0:45 driving / Bed time is left
 SNAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "snapshots")
 STATE_FILE = os.path.join(SNAP_DIR, ".last_check")
 DECISIONS = os.path.join(SNAP_DIR, "decisions.csv")   # approved swaps: task_id,new_plate,approved_at
@@ -88,17 +89,23 @@ def km_between(a_lat, a_lon, b_lat, b_lon):
 
 
 def eta(now, km, clock, cup, bed):
-    """Arrival time with breaks and daily rest. Returns (eta, math_text)."""
+    """Arrival time with breaks and daily rest. Returns (eta, math_text).
+    Clock = driving time left today; Bed = clock time until daily rest must START
+    (breaks also use up Bed time)."""
     drive = km / AVG_KMH
     steps = [f"{km:.0f} km / {AVG_KMH} km/h = {fmt_h(drive)} driving"]
+    need_break = cup is not None and drive > cup
+    elapsed = drive + (BREAK_H if need_break else 0)
+    over_clock = clock is not None and drive > clock
+    over_bed = bed is not None and elapsed > bed
     total = drive
-    available = min(x for x in (clock, bed) if x is not None) if (clock is not None or bed is not None) else None
-    if available is not None and drive > available:
+    if over_clock or over_bed:
         # daily rest also covers the break
         total += DAILY_REST_H
-        steps.append(f"+11:00 daily rest (only {fmt_h(available)} driving left today; "
-                     f"with 9 h reduced rest ETA is 2:00 earlier)")
-    elif cup is not None and drive > cup:
+        why = (f"only {fmt_h(clock)} driving left today" if over_clock
+               else f"Bed {fmt_h(bed)} < {fmt_h(elapsed)} driving{' + 0:45 break' if need_break else ''}")
+        steps.append(f"+11:00 daily rest ({why}; with 9 h reduced rest ETA is 2:00 earlier)")
+    elif need_break:
         total += BREAK_H
         steps.append(f"+0:45 break (Cup {fmt_h(cup)} < driving)")
     return now + timedelta(hours=total), "; ".join(steps)
@@ -120,8 +127,11 @@ def check(rows):
         nxt = dt(r["next_task_time"])
         plate = r["plate"]
 
-        # free truck rules (AGENTS.md)
-        no_task = not r["task_id"].strip()
+        resting = r["status"].strip().lower() == "resting"
+        must_rest = (not resting) and ((bed is not None and bed <= 0) or (clock is not None and clock < 0.5))
+
+        # free truck rules (AGENTS.md); a task counts even without a task number (real LocTracker data)
+        no_task = not (r["task_id"].strip() or r["task_type"].strip() or r["task_time"].strip())
         at_last = (km_left == 0 and not nxt)
         far_next = no_task and nxt and (nxt - now) > timedelta(hours=24)
         if (no_task and not nxt) or far_next or at_last:
@@ -130,6 +140,11 @@ def check(rows):
                 note = "free (at last address, close the task in LocTracker)"
             if far_next:
                 note = f"free until {r['next_task_time']}"
+            if clock is None and bed is None:
+                note += " - driving hours unknown, check if the truck is in use"
+            if must_rest:
+                note += " - MUST REST FIRST"
+                problems.append((r, [("MUST_REST_NOW", f"Bed {r['bed']}, Clock {r['clock']} - driver must stop now (no active task)")]))
             free.append((r, note))
             continue
         if no_task:
@@ -138,7 +153,7 @@ def check(rows):
 
         found = []
         # must rest now
-        if (bed is not None and bed <= 0) or (clock is not None and clock < 0.5):
+        if must_rest:
             txt = f"Bed {r['bed']}, Clock {r['clock']} - driver must stop now"
             if km_left is not None and task_time:
                 d = km_left / AVG_KMH
@@ -147,6 +162,9 @@ def check(rows):
                 txt += (f". New ETA if rest starts now: {e11:%Y-%m-%d %H:%M} (11 h rest) / {e9:%Y-%m-%d %H:%M} (9 h reduced rest)"
                         f" vs {r['task_type']} {r['task_time']}. Math: rest + {km_left:.0f} km / {AVG_KMH} km/h = {fmt_h(d)} driving")
             found.append(("MUST_REST_NOW", txt))
+        elif not resting and min(x for x in (clock, bed, 99) if x is not None) < REST_SOON_H:
+            left = min(x for x in (clock, bed) if x is not None)
+            found.append(("REST_SOON", f"only {fmt_h(left)} left before the driver must rest (Clock {r['clock']}, Bed {r['bed']}) - plan a safe parking place now"))
         # missed FIX
         if r["task_fix"].lower() == "yes" and task_time and now > task_time:
             late_h = (now - task_time).total_seconds() / 3600
@@ -180,6 +198,8 @@ def replacements(task_row, free):
             continue
         if None in (num(r["lat"]), num(r["lon"]), num(task_row["task_lat"]), num(task_row["task_lon"])):
             continue  # location unknown -> never guess
+        if hm(r["clock"]) is None and hm(r["bed"]) is None:
+            continue  # driving hours unknown -> never suggest
         km = km_between(float(r["lat"]), float(r["lon"]), float(task_row["task_lat"]), float(task_row["task_lon"]))
         now = dt(r["data_time"])
         e, _ = eta(now, km, hm(r["clock"]), hm(r["cup"]), hm(r["bed"]))
@@ -210,7 +230,13 @@ def report(path, prev_path=None):
     for r, found in problems:
         print(f"\n[PROBLEM] {r['plate']} (driver {r['driver']}, lang {r['driver_lang']}) at {r['location']}")
         print(f"  driver message language: {LANG.get(r['driver_lang'].upper(), r['driver_lang'])} - write this driver's message ONLY in this language")
-        print(f"  task {r['task_id']}: {r['task_type']} at {r['task_address']} for client {r['client']}, goods on board: {r['goods_on_board']}")
+        if not (r["task_type"].strip() or r["task_time"].strip()):
+            print("  no active task (free truck)")
+            for kind, txt in found:
+                tag = "ONGOING" if (r["plate"], kind) in prev_keys else "NEW"
+                print(f"  - {kind} [{tag}]: {txt}")
+            continue
+        print(f"  task {r['task_id'] or '(no number)'}: {r['task_type']} at {r['task_address']} for client {r['client']}, goods on board: {r['goods_on_board']}")
         for kind, txt in found:
             tag = "ONGOING" if (r["plate"], kind) in prev_keys else "NEW"
             print(f"  - {kind} [{tag}]: {txt}")
@@ -221,7 +247,8 @@ def report(path, prev_path=None):
             if reps:
                 print("  replacement candidates (free trucks):")
                 for e, km, rr in reps:
-                    print(f"    * {rr['plate']} at {rr['location']}: ~{km:.0f} km, ETA {e:%H:%M}, Clock {rr['clock']}, Bed {rr['bed']}, "
+                    efmt = "%H:%M" if e.date() == dt(r["data_time"]).date() else "%d.%m %H:%M"
+                    print(f"    * {rr['plate']} at {rr['location']}: ~{km:.0f} km, ETA {e:{efmt}}, Clock {rr['clock']}, Bed {rr['bed']}, "
                           f"driver {rr['driver']}, language {LANG.get(rr['driver_lang'].upper(), rr['driver_lang'])}")
             else:
                 print("  replacement candidates: none free")

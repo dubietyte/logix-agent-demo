@@ -163,11 +163,45 @@ def _():
     return "new ETA 2026-11-18 11:00" in out and "driver message language: Russian" in out
 
 
+@test("S16 breaks use up Bed time -> daily rest needed (real-data case)")
+def _():
+    # 587 km = 8:23 driving < Bed 8:42, but + 0:45 break = 9:08 > Bed -> must take daily rest first
+    from datetime import datetime
+    e, txt = m.eta(datetime(2026, 11, 13, 19, 0), 587, m.hm("9:53"), m.hm("4:30"), m.hm("8:42"))
+    return "+11:00 daily rest (Bed 8:42" in txt and e.strftime("%d %H:%M") == "14 14:23"
+
+
+@test("S17 task without a task number is still a task (not a free truck)")
+def _():
+    k, f, _ = kinds([row(task_id="", task_time="2026-11-18 11:00", km_left="150")])
+    return f == [] and k == {"T01": ["LATE"]}
+
+
+@test("S18 less than 0:45 left -> REST_SOON warning; resting driver -> no warning")
+def _():
+    k, _, _ = kinds([row(bed="0:31", clock="0:33", task_time="2026-11-20 10:00", km_left="80"),
+                     row(plate="T02", status="resting", bed="0:00", clock="0:10", task_time="2026-11-20 10:00")])
+    return k == {"T01": ["REST_SOON"]}
+
+
+@test("S19 free truck with unknown hours is never suggested as replacement")
+def _():
+    out = run_report([row(task_type="loading", goods_on_board="no", task_time="2026-11-18 10:30", km_left="150"),
+                      free(plate="UNK", clock="unknown", cup="unknown", bed="unknown")])
+    return "none free" in out and "check if the truck is in use" in out
+
+
+@test("S20 free truck that must rest -> MUST_REST_NOW + 'MUST REST FIRST'")
+def _():
+    out = run_report([free(plate="F1", status="unknown", bed="0:00")])
+    return "MUST_REST_NOW" in out and "MUST REST FIRST" in out
+
+
 # ---- 30-truck test day: expected problems per check ----
 DAY = {
     "08-00": {"DEMO23": ["LATE"]},
     "08-30": {"DEMO23": ["LATE"]},
-    "09-00": {"DEMO23": ["LATE"]},
+    "09-00": {"DEMO18": ["REST_SOON"], "DEMO23": ["LATE"]},
     "09-30": {"DEMO07": ["LATE"], "DEMO12": ["LATE"], "DEMO18": ["MUST_REST_NOW"], "DEMO23": ["MISSED_FIX"]},
     "10-00": {"DEMO07": ["LATE"], "DEMO12": ["LATE"], "DEMO18": ["MUST_REST_NOW"], "DEMO23": ["MISSED_FIX"]},
     "10-30": {"DEMO07": ["LATE"], "DEMO12": ["MISSED_FIX"], "DEMO18": ["MUST_REST_NOW"], "DEMO23": ["MISSED_FIX"]},
@@ -186,6 +220,27 @@ for hhmm, exp in DAY.items():
             return ok
         return fn
     TESTS.append((f"DAY {hhmm.replace('-', ':')} 30 trucks -> {', '.join(f'{p} {v[0]}' for p, v in exp.items())}", make()))
+
+
+# ---- private real-data check (only where the real file exists, e.g. in Hermes; never on GitHub) ----
+REAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "real_test")
+if os.path.exists(os.path.join(REAL, "expected.csv")):
+    import csv as _csv
+    for exp in _csv.DictReader(open(os.path.join(REAL, "expected.csv"), encoding="utf-8")):
+        def make(exp=exp):
+            def fn():
+                rows = m.load(os.path.join(REAL, exp["file"]))
+                k, f, unk = kinds(rows)
+                plate, want = exp["plate"], exp["expect"]
+                if want == "FREE":
+                    return plate in f
+                if want == "CANNOT_CHECK":
+                    return any(u.startswith(plate) for u in unk)
+                if want == "OK":
+                    return plate not in k and plate not in f and not any(u.startswith(plate) for u in unk)
+                return k.get(plate) == sorted(want.split("+"))
+            return fn
+        TESTS.append((f"REAL {exp['file']} {exp['plate']} -> {exp['expect']} ({exp['note']})", make()))
 
 
 if __name__ == "__main__":
