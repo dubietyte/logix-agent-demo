@@ -183,7 +183,9 @@ def check(rows):
             left_txt = f"{km_left:.0f} km left" if km_left is not None else "km left unknown"
             if km_left is not None:
                 e, math_txt = eta(now, km_left, clock, cup, bed)
-                left_txt += f", new ETA {e:%Y-%m-%d %H:%M}. Math: {math_txt}"
+                total_late = (e - task_time).total_seconds() / 3600
+                left_txt += (f", new ETA {e:%Y-%m-%d %H:%M} = {fmt_h(total_late)} after the FIX time "
+                             f"(tell the client this full delay, not only the time already passed). Math: {math_txt}")
             found.append(("MISSED_FIX", f"FIX {r['task_type']} {r['task_time']} passed {fmt_h(late_h)} ago, task still open, {left_txt}"))
         elif task_time and km_left is not None:
             e, math_txt = eta(now, km_left, clock, cup, bed)
