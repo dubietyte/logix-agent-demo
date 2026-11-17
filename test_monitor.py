@@ -160,7 +160,8 @@ def _():
 @test("S15 missed FIX -> new ETA shown; driver language spelled out")
 def _():
     out = run_report([row(task_fix="yes", task_time="2026-11-18 09:30", km_left="70", driver_lang="RU")])
-    return "new ETA 2026-11-18 11:00" in out and "driver message language: Russian" in out
+    return ("new ETA 2026-11-18 11:00" in out and "driver message language: Russian" in out
+            and 'starting with: "Здравствуйте, Jonas!"' in out)
 
 
 @test("S16 breaks use up Bed time -> daily rest needed (real-data case)")

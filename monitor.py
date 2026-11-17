@@ -35,6 +35,17 @@ DECISIONS = os.path.join(SNAP_DIR, "decisions.csv")   # approved swaps: task_id,
 LANG = {"LT": "Lithuanian", "RU": "Russian", "PL": "Polish", "UA": "Ukrainian", "LV": "Latvian", "EN": "English", "DE": "German"}
 
 
+GREET = {"LT": "Labas, {n}!", "RU": "Здравствуйте, {n}!", "PL": "Dzień dobry, {n}!", "UA": "Добрий день, {n}!",
+         "LV": "Labdien, {n}!", "EN": "Hello, {n}!", "DE": "Guten Tag, {n}!"}
+
+
+def greeting(r):
+    lang = r["driver_lang"].strip().upper()
+    name = r["driver"].strip() if r["driver"].strip().lower() not in ("", "unknown") else ""
+    g = GREET.get(lang, "Hello, {n}!").format(n=name or "driver")
+    return g.replace(", driver!", "!") if not name else g
+
+
 def set_dir(path):
     global SNAP_DIR, STATE_FILE, DECISIONS
     base = os.path.dirname(os.path.abspath(__file__))
@@ -251,7 +262,8 @@ def report(path, prev_path=None):
         print(f"STATUS: {len(problems)} truck(s) with problems")
     for n, (r, found) in enumerate(problems, 1):
         print(f"\n[PROBLEM {n} of {len(problems)}] {r['plate']} (driver {r['driver']}, lang {r['driver_lang']}) at {r['location']}")
-        print(f"  driver message language: {LANG.get(r['driver_lang'].upper(), r['driver_lang'])} - write this driver's message ONLY in this language")
+        print(f"  driver message language: {LANG.get(r['driver_lang'].upper(), r['driver_lang'])} - write this driver's message ONLY in this language, "
+              f"starting with: \"{greeting(r)}\"")
         if not (r["task_type"].strip() or r["task_time"].strip()):
             print("  no active task (free truck)")
             for kind, txt in found:
@@ -271,7 +283,7 @@ def report(path, prev_path=None):
                 for e, km, rr in reps:
                     efmt = "%H:%M" if e.date() == dt(r["data_time"]).date() else "%d.%m %H:%M"
                     print(f"    * {rr['plate']} at {rr['location']}: ~{km:.0f} km, ETA {e:{efmt}}, Clock {rr['clock']}, Bed {rr['bed']}, "
-                          f"driver {rr['driver']}, language {LANG.get(rr['driver_lang'].upper(), rr['driver_lang'])}")
+                          f"driver {rr['driver']}, language {LANG.get(rr['driver_lang'].upper(), rr['driver_lang'])} (message starts: \"{greeting(rr)}\")")
             else:
                 print("  replacement candidates: none free")
     for r, f in handled:

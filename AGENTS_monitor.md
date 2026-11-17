@@ -37,7 +37,7 @@ For each problem choose ONE action and give the reason in one sentence:
 
 ### Step 3 - prepare the messages (drafts, never send them yourself)
 - Client message: short, polite, in English unless the client language is known. Contains: truck plate, new ETA as clock time, reason in a few words, apology.
-- Driver message: ONLY in the language from the line "driver message language" of that truck (for a swap: the "language" of the replacement driver). Check it for every message - never default to Lithuanian. Contains: what to do now, address, time.
+- Driver message: ONLY in the language from the line "driver message language" of that truck (for a swap: the "language" of the replacement driver). Check it for every message - never default to Lithuanian. Every driver message MUST begin with the exact greeting monitor.py gives ("starting with: ...") and continue in that same language. Contains: what to do now, address, time.
 - Plates, task numbers and addresses are never translated or transliterated (write DEMO05, not ДЕМО05).
 - For a swap write TWO driver messages: the new truck (go to the load) and the old truck (stop going there, wait for a new task).
 
