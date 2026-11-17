@@ -30,6 +30,9 @@ STATE_FILE = os.path.join(SNAP_DIR, ".last_check")
 DECISIONS = os.path.join(SNAP_DIR, "decisions.csv")   # approved swaps: task_id,new_plate,approved_at
 
 
+LANG = {"LT": "Lithuanian", "RU": "Russian", "PL": "Polish", "UA": "Ukrainian", "LV": "Latvian", "EN": "English", "DE": "German"}
+
+
 def set_dir(path):
     global SNAP_DIR, STATE_FILE, DECISIONS
     base = os.path.dirname(os.path.abspath(__file__))
@@ -136,11 +139,21 @@ def check(rows):
         found = []
         # must rest now
         if (bed is not None and bed <= 0) or (clock is not None and clock < 0.5):
-            found.append(("MUST_REST_NOW", f"Bed {r['bed']}, Clock {r['clock']} - driver must stop now"))
+            txt = f"Bed {r['bed']}, Clock {r['clock']} - driver must stop now"
+            if km_left is not None and task_time:
+                d = km_left / AVG_KMH
+                e11 = now + timedelta(hours=DAILY_REST_H + d)
+                e9 = now + timedelta(hours=9 + d)
+                txt += (f". New ETA if rest starts now: {e11:%Y-%m-%d %H:%M} (11 h rest) / {e9:%Y-%m-%d %H:%M} (9 h reduced rest)"
+                        f" vs {r['task_type']} {r['task_time']}. Math: rest + {km_left:.0f} km / {AVG_KMH} km/h = {fmt_h(d)} driving")
+            found.append(("MUST_REST_NOW", txt))
         # missed FIX
         if r["task_fix"].lower() == "yes" and task_time and now > task_time:
             late_h = (now - task_time).total_seconds() / 3600
             left_txt = f"{km_left:.0f} km left" if km_left is not None else "km left unknown"
+            if km_left is not None:
+                e, math_txt = eta(now, km_left, clock, cup, bed)
+                left_txt += f", new ETA {e:%Y-%m-%d %H:%M}. Math: {math_txt}"
             found.append(("MISSED_FIX", f"FIX {r['task_type']} {r['task_time']} passed {fmt_h(late_h)} ago, task still open, {left_txt}"))
         elif task_time and km_left is not None:
             e, math_txt = eta(now, km_left, clock, cup, bed)
@@ -196,6 +209,7 @@ def report(path, prev_path=None):
         print(f"STATUS: {len(problems)} truck(s) with problems")
     for r, found in problems:
         print(f"\n[PROBLEM] {r['plate']} (driver {r['driver']}, lang {r['driver_lang']}) at {r['location']}")
+        print(f"  driver message language: {LANG.get(r['driver_lang'].upper(), r['driver_lang'])} - write this driver's message ONLY in this language")
         print(f"  task {r['task_id']}: {r['task_type']} at {r['task_address']} for client {r['client']}, goods on board: {r['goods_on_board']}")
         for kind, txt in found:
             tag = "ONGOING" if (r["plate"], kind) in prev_keys else "NEW"
@@ -207,7 +221,8 @@ def report(path, prev_path=None):
             if reps:
                 print("  replacement candidates (free trucks):")
                 for e, km, rr in reps:
-                    print(f"    * {rr['plate']} at {rr['location']}: ~{km:.0f} km, ETA {e:%H:%M}, Clock {rr['clock']}, Bed {rr['bed']}, lang {rr['driver_lang']}")
+                    print(f"    * {rr['plate']} at {rr['location']}: ~{km:.0f} km, ETA {e:%H:%M}, Clock {rr['clock']}, Bed {rr['bed']}, "
+                          f"driver {rr['driver']}, language {LANG.get(rr['driver_lang'].upper(), rr['driver_lang'])}")
             else:
                 print("  replacement candidates: none free")
     for r, f in handled:

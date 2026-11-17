@@ -151,6 +151,18 @@ def _():
     return "+11:00 daily rest" in out and "LATE" in out
 
 
+@test("S14 must rest now -> new ETA for 11 h and 9 h rest shown")
+def _():
+    out = run_report([row(bed="0:00", km_left="140", task_time="2026-11-19 03:00")])
+    return "11 h rest" in out and "2026-11-18 23:00" in out and "2026-11-18 21:00" in out
+
+
+@test("S15 missed FIX -> new ETA shown; driver language spelled out")
+def _():
+    out = run_report([row(task_fix="yes", task_time="2026-11-18 09:30", km_left="70", driver_lang="RU")])
+    return "new ETA 2026-11-18 11:00" in out and "driver message language: Russian" in out
+
+
 # ---- 30-truck test day: expected problems per check ----
 DAY = {
     "08-00": {"DEMO23": ["LATE"]},

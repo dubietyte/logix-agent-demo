@@ -27,13 +27,14 @@ For each problem choose ONE action and give the reason in one sentence:
   a) keep the truck and ask the client to accept a later loading, or
   b) swap: give the load to the best replacement from the list.
   Swap when a replacement arrives clearly earlier (at least 30 min) and has enough hours (Clock and Bed bigger than its driving time). Prefer a driver who speaks the client's / loading place language if times are close. Say what happens to the original truck (free now, can take another job).
-- MUST_REST_NOW -> the driver stops now, no discussion. Tell the driver where to stop (nearest safe parking), and warn the client with the new ETA (show both 11 h and 9 h reduced rest).
+- MUST_REST_NOW -> the driver stops now, no discussion. Tell the driver where to stop (nearest safe parking), and warn the client with the new ETA from monitor.py (show both 11 h and 9 h reduced rest).
+- MISSED_FIX with goods on board -> keep truck, give the client the new ETA from monitor.py and ask the dispatcher if the client should be called.
 - Several problems at once -> start with the most urgent: MISSED_FIX, then MUST_REST_NOW, then LATE (biggest delay first).
 - If data is "unknown" or looks wrong, say so and ask the dispatcher. Never guess.
 
 ### Step 3 - prepare the messages (drafts, never send them yourself)
 - Client message: short, polite, in English unless the client language is known. Contains: truck plate, new ETA as clock time, reason in a few words, apology.
-- Driver message: in the driver's language (driver_lang: LT = Lithuanian, RU = Russian, EN = English). Contains: what to do now, address, time.
+- Driver message: ONLY in the language from the line "driver message language" of that truck (for a swap: the "language" of the replacement driver). Check it for every message - never default to Lithuanian. Contains: what to do now, address, time.
 - Plates, task numbers and addresses are never translated or transliterated (write DEMO05, not ДЕМО05).
 - For a swap write TWO driver messages: the new truck (go to the load) and the old truck (stop going there, wait for a new task).
 
