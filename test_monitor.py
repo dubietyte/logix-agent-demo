@@ -253,6 +253,106 @@ def _():
             and "[ONGOING - do not repeat] L1" in out and "[ONGOING - do not repeat] F1" in out)
 
 
+# ---- results file for the Logix screen (19 Nov) ----
+import json as _json
+
+DAY_DIR0 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "day_test")
+EXAMPLE_AI = os.path.join(DAY_DIR0, "example_ai_09-30.json")
+
+
+def _day_copy():
+    """Temp copy of the test day (fleet files only) as the monitor folder."""
+    d = tempfile.mkdtemp()
+    for f in os.listdir(DAY_DIR0):
+        if f.startswith("fleet_") and f.endswith(".csv"):
+            shutil.copy(os.path.join(DAY_DIR0, f), d)
+    m.set_dir(d)
+    return d
+
+
+def _quiet(fn, *a):
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        try:
+            r = fn(*a)
+        except SystemExit:
+            r = None
+    return r, out.getvalue()
+
+
+def _run_check(d, hhmm, prev=None):
+    _quiet(m.report, os.path.join(d, f"fleet_{hhmm}.csv"), os.path.join(d, f"fleet_{prev}.csv") if prev else None)
+    return _json.load(open(os.path.join(d, "results", "latest.json"), encoding="utf-8"))
+
+
+@test("S28 every check saves a results file for the screen (09:30: 4 problems, DEMO20 best for DEMO12)")
+def _():
+    d = _day_copy()
+    try:
+        res = _run_check(d, "09-30", "09-00")
+        p = {x["plate"]: x for x in res["problems"]}
+        return (os.path.exists(os.path.join(d, "results", "check_2026-11-18_0930.json"))
+                and res["counts"] == {"trucks": 30, "problems": 4, "handled": 0, "free": 9, "cannot_check": 1, "ok": 25}
+                and [x["plate"] for x in res["problems"]] == ["DEMO23", "DEMO18", "DEMO12", "DEMO07"]
+                and p["DEMO12"]["replacements"][0]["plate"] == "DEMO20" and p["DEMO23"]["swap_possible"] is False
+                and p["DEMO23"]["facts"]["eta"] == "2026-11-18 11:24" and p["DEMO18"]["facts"]["eta_after_9h_rest"] == "2026-11-18 20:51")
+    finally:
+        shutil.rmtree(d)
+
+
+@test("S29 --save-ai merges the AI's options + messages into the results file")
+def _():
+    d = _day_copy()
+    try:
+        _run_check(d, "09-30", "09-00")
+        ok, _ = _quiet(m.save_ai, EXAMPLE_AI)
+        res = _json.load(open(os.path.join(d, "results", "latest.json"), encoding="utf-8"))
+        p = {x["plate"]: x for x in res["problems"]}
+        return ok and all(x["ai"] for x in res["problems"]) and p["DEMO12"]["ai"]["options"][0]["swap_to"] == "DEMO20"
+    finally:
+        shutil.rmtree(d)
+
+
+@test("S30 --save-ai refuses: swap with goods on board, invented truck, wrong driver language, unknown plate")
+def _():
+    d = _day_copy()
+    try:
+        _run_check(d, "09-30", "09-00")
+        good = _json.load(open(EXAMPLE_AI, encoding="utf-8"))
+        bad_cases = []
+        b = _json.loads(_json.dumps(good)); b["decisions"][0]["options"][0]["swap_to"] = "DEMO20"; bad_cases.append(b)
+        b = _json.loads(_json.dumps(good)); b["decisions"][2]["options"][0]["swap_to"] = "DEMO99"; bad_cases.append(b)
+        b = _json.loads(_json.dumps(good)); b["decisions"][1]["options"][0]["messages"][0]["lang"] = "LT"; bad_cases.append(b)
+        b = _json.loads(_json.dumps(good)); b["decisions"][3]["plate"] = "DEMO05"; bad_cases.append(b)
+        b = _json.loads(_json.dumps(good)); b["decisions"][1]["options"][1]["recommended"] = True; bad_cases.append(b)
+        results = []
+        for i, b in enumerate(bad_cases):
+            f = os.path.join(d, f"bad{i}.json"); _json.dump(b, open(f, "w", encoding="utf-8"))
+            ok, _ = _quiet(m.save_ai, f)
+            results.append(ok)
+        res = _json.load(open(os.path.join(d, "results", "latest.json"), encoding="utf-8"))
+        return results == [False] * 5 and not any(x["ai"] for x in res["problems"])
+    finally:
+        shutil.rmtree(d)
+
+
+@test("S31 --decide: approved swap -> HANDLED next check; ongoing problems keep the AI plan + answer")
+def _():
+    d = _day_copy()
+    try:
+        _run_check(d, "09-30", "09-00")
+        _quiet(m.save_ai, EXAMPLE_AI)
+        _quiet(m.decide, "DEMO12", "swap", "approved", "09:35")
+        _quiet(m.decide, "DEMO23", "keep", "approved", "09:36")
+        res = _run_check(d, "10-00", "09-30")
+        p = {x["plate"]: x for x in res["problems"]}
+        return ("DEMO12" not in p and res["handled"][0]["to_plate"] == "DEMO20"
+                and p["DEMO23"]["decision"]["status"] == "approved" and p["DEMO07"]["ai"]["carried_from"] == "2026-11-18 09:30"
+                and p["DEMO18"]["decision"] is None)
+    finally:
+        shutil.rmtree(d)
+
+
 # ---- 30-truck test day: expected problems per check ----
 DAY = {
     "08-00": {"DEMO23": ["LATE"]},

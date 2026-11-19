@@ -12,9 +12,13 @@ Usage:
   python3 monitor.py --next        # runs the next snapshot in order (demo mode)
   python3 monitor.py --reset       # start the demo again from the first snapshot
   python3 monitor.py --approve ORD-103 DEMO05 15:00   # save an approved swap
+  python3 monitor.py --save-ai results/ai_09-30.json   # merge the AI's decisions + messages into the latest results file
+  python3 monitor.py --decide DEMO12 swap approved 09:35   # save the dispatcher's answer (swaps also go to decisions.csv)
+Every check is also saved for the Logix screen: <dir>/results/check_<date>_<HHMM>.json and <dir>/results/latest.json
   add  --dir data/day_test  to any command to use another snapshot folder (e.g. the 30-truck test day)
 """
 import csv
+import json
 import re
 import math
 import os
@@ -301,12 +305,15 @@ def report(path, prev_path=None):
     handled = [(r, f) for r, f in problems if r["task_id"] in swaps]
     problems = [(r, f) for r, f in problems if r["task_id"] not in swaps]
     problems.sort(key=priority)
+    res = new_result(rows, path)
     print(f"=== FLEET CHECK  data_time {rows[0]['data_time']}  file {os.path.basename(path)} ===")
     if not problems:
         print("STATUS: ALL OK - nothing to report to the dispatcher.")
     else:
         print(f"STATUS: {len(problems)} truck(s) with problems")
     for n, (r, found) in enumerate(problems, 1):
+        item = problem_item(n, r, found, prev_keys)
+        res["problems"].append(item)
         print(f"\n[PROBLEM {n} of {len(problems)}] {r['plate']} (driver {r['driver'].strip() or 'name not given'}, lang {r['driver_lang']}) at {r['location']}")
         if r["driver_lang"].strip().upper() in LANG:
             print(f"  driver message language: {LANG[r['driver_lang'].strip().upper()]} - write this driver's message ONLY in this language, "
@@ -338,6 +345,7 @@ def report(path, prev_path=None):
             print("  replacement: NOT POSSIBLE (goods already on this truck) -> options: keep truck, inform client")
         else:
             reps = replacements(r, free)
+            item["replacements"] = [rep_item(e, km, rr) for e, km, rr in reps]
             if reps:
                 print("  replacement candidates (free trucks):")
                 for e, km, rr in reps:
@@ -348,6 +356,7 @@ def report(path, prev_path=None):
                 print("  replacement candidates: none free")
     for r, f in handled:
         newp, when = swaps[r["task_id"]]
+        res["handled"].append({"task_id": r["task_id"], "from_plate": r["plate"], "to_plate": newp, "approved_at": when})
         print(f"\n[HANDLED] {r['task_id']} already moved from {r['plate']} to {newp} (approved {when}). "
               f"Do not suggest it again. {r['plate']} is free for another job; {newp} is busy with {r['task_id']}.")
     print("\n[FREE TRUCKS]")
@@ -364,6 +373,272 @@ def report(path, prev_path=None):
     print("\n[OK]  (one short line per truck; skip trucks already reported OK in the last check)")
     for line in ok:
         print("  " + line)
+    res["free"] = [{"plate": r["plate"], "location": r["location"], "note": note, "clock": r["clock"], "bed": r["bed"]} for r, note in free]
+    res["cannot_check"] = list(unknown)
+    res["ok"] = list(ok)
+    res["counts"] = {"trucks": len(rows), "problems": len(problems), "handled": len(handled), "free": len(free),
+                     "cannot_check": len(unknown), "ok": len(rows) - len(problems) - len(handled) - len(unknown)}
+    saved = save_result(res)
+    if saved:
+        print(f"\n[RESULTS FILE] {saved}")
+
+
+
+# ---------------------------------------------------------------------------
+# Results file for the Logix screen (website). The text above is for the chat,
+# the JSON below is the same check in a form a web page can read.
+# ---------------------------------------------------------------------------
+STATUS_ORDER = ["MISSED_FIX", "MUST_REST_NOW", "LATE", "STANDING", "REST_SOON"]
+
+
+def iso(x):
+    return x.strftime("%Y-%m-%d %H:%M") if x else None
+
+
+def results_dir():
+    return os.path.join(SNAP_DIR, "results")
+
+
+def new_result(rows, path):
+    return {"version": 1, "data_time": rows[0]["data_time"] if rows else None, "file": os.path.basename(path),
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "problems": [], "handled": [], "free": [], "cannot_check": [], "ok": [], "counts": {}}
+
+
+def facts(r, found):
+    """Numbers the screen shows in boxes (same maths as the text lines)."""
+    now = dt(r["data_time"])
+    km_left, task_time = num(r["km_left"]), dt(r["task_time"])
+    clock, cup, bed = hm(r["clock"]), hm(r["cup"]), hm(r["bed"])
+    kinds = [k for k, _ in found]
+    out = {"km_left": km_left}
+    if task_time and km_left is not None:
+        e, math_txt = eta(now, km_left, clock, cup, bed)
+        out["eta"] = iso(e)
+        out["delay_min"] = max(0, int(round((e - task_time).total_seconds() / 60)))
+        out["math"] = math_txt
+    if "MUST_REST_NOW" in kinds and km_left is not None:
+        d = km_left / AVG_KMH
+        out["eta_after_11h_rest"] = iso(now + timedelta(hours=DAILY_REST_H + d))
+        out["eta_after_9h_rest"] = iso(now + timedelta(hours=9 + d))
+    if "MISSED_FIX" in kinds and task_time:
+        out["minutes_since_fix"] = int(round((now - task_time).total_seconds() / 60))
+    return out
+
+
+def problem_item(n, r, found, prev_keys):
+    lang = r["driver_lang"].strip().upper()
+    kinds = [{"kind": k, "tag": "ONGOING" if (r["plate"], k) in prev_keys else "NEW", "text": t} for k, t in found if k != "INFO"]
+    status = next((k for k in STATUS_ORDER if any(x["kind"] == k for x in kinds)), kinds[0]["kind"] if kinds else "INFO")
+    has_task = bool(r["task_type"].strip() or r["task_time"].strip())
+    goods = r["goods_on_board"].strip().lower() == "yes"
+    return {
+        "n": n, "plate": r["plate"], "status": status,
+        "is_new": any(x["tag"] == "NEW" for x in kinds),
+        "kinds": kinds, "info": [t for k, t in found if k == "INFO"],
+        "driver": r["driver"].strip(), "driver_lang": lang if lang in LANG else "UNKNOWN",
+        "driver_lang_name": LANG.get(lang, "unknown"), "greeting": greeting(r),
+        "location": r["location"], "data_time": r["data_time"],
+        "task": ({"task_id": r["task_id"], "type": r["task_type"], "address": r["task_address"], "time": r["task_time"],
+                  "fix": r["task_fix"].strip().lower() == "yes", "client": r["client"]} if has_task else None),
+        "goods_on_board": r["goods_on_board"].strip().lower(),
+        "swap_possible": has_task and not goods,
+        "facts": facts(r, found),
+        "replacements": [],
+        "ai": None, "decision": None,
+    }
+
+
+def rep_item(e, km, rr):
+    lang = rr["driver_lang"].strip().upper()
+    return {"plate": rr["plate"], "location": rr["location"], "km": round(km), "eta": iso(e),
+            "clock": rr["clock"], "bed": rr["bed"], "driver": rr["driver"].strip(),
+            "driver_lang": lang if lang in LANG else "UNKNOWN", "greeting": greeting(rr)}
+
+
+def _read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _write_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+
+
+def check_file(data_time):
+    return os.path.join(results_dir(), "check_" + data_time.replace(" ", "_").replace(":", "") + ".json")
+
+
+def save_result(res):
+    """Writes check_<time>.json + latest.json. Ongoing problems keep the AI plan and the
+    dispatcher's answer from the previous check (the AI writes them only once)."""
+    if not res["data_time"]:
+        return None
+    try:
+        os.makedirs(results_dir(), exist_ok=True)
+    except OSError:
+        return None
+    prev = _read_json(os.path.join(results_dir(), "latest.json"))
+    if prev and prev.get("data_time") and prev["data_time"] < res["data_time"]:
+        before = {p["plate"]: p for p in prev.get("problems", [])}
+        for p in res["problems"]:
+            old = before.get(p["plate"])
+            if old and not p["is_new"] and old.get("status") == p["status"]:
+                if old.get("ai"):
+                    p["ai"] = dict(old["ai"], carried_from=old["ai"].get("carried_from") or prev["data_time"])
+                if old.get("decision"):
+                    p["decision"] = old["decision"]
+    path = check_file(res["data_time"])
+    _write_json(path, res)
+    _write_json(os.path.join(results_dir(), "latest.json"), res)
+    return path
+
+
+MSG_TO = ("client", "driver")
+
+
+def validate_ai(ai, res):
+    """Returns (errors, warnings). Errors = the file is not saved."""
+    errors, warnings = [], []
+    if not isinstance(ai, dict) or not isinstance(ai.get("decisions"), list):
+        return ['the file must look like {"data_time": "...", "decisions": [ ... ]}'], warnings
+    if ai.get("data_time") != res.get("data_time"):
+        errors.append(f"data_time {ai.get('data_time')!r} does not match the latest check {res.get('data_time')!r}")
+    probs = {p["plate"]: p for p in res.get("problems", [])}
+    seen = set()
+    for i, d in enumerate(ai["decisions"], 1):
+        plate = (d or {}).get("plate")
+        where = f"decision {i} ({plate})"
+        if plate not in probs:
+            errors.append(f"{where}: {plate!r} is not a problem in this check (problems: {', '.join(probs) or 'none'})")
+            continue
+        if plate in seen:
+            errors.append(f"{where}: {plate} appears twice")
+        seen.add(plate)
+        p = probs[plate]
+        for key in ("headline", "cause"):
+            if not str(d.get(key, "")).strip():
+                errors.append(f"{where}: '{key}' is empty")
+        opts = d.get("options")
+        if not isinstance(opts, list) or not 1 <= len(opts) <= 4:
+            errors.append(f"{where}: 'options' must be a list of 1-4 options")
+            continue
+        keys = [o.get("key") for o in opts]
+        if len(set(keys)) != len(keys) or not all(keys):
+            errors.append(f"{where}: every option needs its own 'key'")
+        if sum(1 for o in opts if o.get("recommended")) != 1:
+            errors.append(f"{where}: exactly ONE option must have \"recommended\": true")
+        cands = {c["plate"] for c in p.get("replacements", [])}
+        for o in opts:
+            ow = f"{where} option {o.get('key')!r}"
+            if not str(o.get("title", "")).strip():
+                errors.append(f"{ow}: 'title' is empty")
+            sw = o.get("swap_to")
+            if sw:
+                if not p["swap_possible"]:
+                    errors.append(f"{ow}: swap_to {sw} not allowed - goods on board / no task, the truck cannot be swapped")
+                elif sw not in cands:
+                    errors.append(f"{ow}: swap_to {sw} is not in monitor.py's replacement list ({', '.join(cands) or 'none'}) - never guess a truck")
+            msgs = o.get("messages", [])
+            if not isinstance(msgs, list):
+                errors.append(f"{ow}: 'messages' must be a list")
+                continue
+            for j, msg in enumerate(msgs, 1):
+                mw = f"{ow} message {j}"
+                if msg.get("to") not in MSG_TO:
+                    errors.append(f"{mw}: 'to' must be \"client\" or \"driver\"")
+                if not str(msg.get("text", "")).strip():
+                    errors.append(f"{mw}: 'text' is empty")
+                lang = str(msg.get("lang", "")).upper()
+                if lang not in LANG:
+                    errors.append(f"{mw}: 'lang' must be one of {', '.join(LANG)}")
+                if msg.get("to") == "driver":
+                    target = msg.get("plate") or plate
+                    exp = p if target == plate else next((c for c in p.get("replacements", []) if c["plate"] == target), None)
+                    if exp is None:
+                        errors.append(f"{mw}: driver message for unknown truck {target!r}")
+                    else:
+                        want_lang = exp["driver_lang"]
+                        if want_lang != "UNKNOWN" and lang != want_lang:
+                            errors.append(f"{mw}: driver of {target} speaks {want_lang}, message is {lang}")
+                        if not str(msg.get("text", "")).startswith(exp["greeting"]):
+                            warnings.append(f"{mw}: should start with the greeting \"{exp['greeting']}\"")
+    for plate, p in probs.items():
+        if plate not in seen and p["is_new"] and not p.get("ai"):
+            warnings.append(f"{plate}: NEW problem without an AI decision - the screen will show only the maths")
+    return errors, warnings
+
+
+def save_ai(path):
+    """Merge the AI's decisions into latest.json and its check file. Returns True if saved."""
+    res = _read_json(os.path.join(results_dir(), "latest.json"))
+    if not res:
+        print("ERROR: no results file yet - run a check first.")
+        return False
+    raw = sys.stdin.read() if path == "-" else None
+    try:
+        ai = json.loads(raw) if raw is not None else json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"ERROR: cannot read {path}: {e}")
+        return False
+    errors, warnings = validate_ai(ai, res)
+    for w in warnings:
+        print("WARNING: " + w)
+    if errors:
+        print("NOT SAVED - fix these and run --save-ai again:")
+        for e in errors:
+            print("  - " + e)
+        return False
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    by_plate = {d["plate"]: d for d in ai["decisions"]}
+    for p in res["problems"]:
+        if p["plate"] in by_plate:
+            d = by_plate[p["plate"]]
+            p["ai"] = {k: d.get(k) for k in ("headline", "cause", "depends_on", "options")}
+            p["ai"]["saved_at"] = stamp
+    _write_json(check_file(res["data_time"]), res)
+    _write_json(os.path.join(results_dir(), "latest.json"), res)
+    print(f"Saved AI decisions for {len(by_plate)} of {len(res['problems'])} problem(s) in {check_file(res['data_time'])}")
+    return True
+
+
+def decide(plate, key, status, at=""):
+    """Save the dispatcher's answer. An approved swap also goes to decisions.csv (-> [HANDLED] next check)."""
+    if status not in ("approved", "rejected"):
+        print("ERROR: status must be approved or rejected")
+        return False
+    res = _read_json(os.path.join(results_dir(), "latest.json"))
+    p = next((x for x in (res or {}).get("problems", []) if x["plate"] == plate), None)
+    if not p:
+        print(f"ERROR: {plate} is not a problem in the latest check")
+        return False
+    opts = {o["key"]: o for o in ((p.get("ai") or {}).get("options") or [])}
+    if opts and key not in opts:
+        print(f"ERROR: option {key!r} not found for {plate} (options: {', '.join(opts)})")
+        return False
+    p["decision"] = {"status": status, "option": key, "at": at or datetime.now().strftime("%H:%M")}
+    _write_json(check_file(res["data_time"]), res)
+    _write_json(os.path.join(results_dir(), "latest.json"), res)
+    sw = (opts.get(key) or {}).get("swap_to")
+    if status == "approved" and sw and p.get("task") and p["task"]["task_id"]:
+        approve_swap(p["task"]["task_id"], sw, p["decision"]["at"])
+    print(f"Saved: {plate} -> {key} {status}")
+    return True
+
+
+def approve_swap(task_id, new_plate, at=""):
+    new = not os.path.exists(DECISIONS)
+    with open(DECISIONS, "a", encoding="utf-8") as f:
+        if new:
+            f.write("task_id,new_plate,approved_at\n")
+        f.write(f"{task_id},{new_plate},{at}\n")
+    print(f"Saved swap: {task_id} -> {new_plate}")
 
 
 def snapshots():
@@ -380,16 +655,22 @@ def main():
         for f in (STATE_FILE, DECISIONS):
             if os.path.exists(f):
                 os.remove(f)
+        if os.path.isdir(results_dir()):
+            for f in os.listdir(results_dir()):
+                if f.endswith(".json"):
+                    os.remove(os.path.join(results_dir(), f))
         print("Demo reset. Next check: " + snapshots()[0])
         return
     if args and args[0] == "--approve":
-        new = not os.path.exists(DECISIONS)
-        with open(DECISIONS, "a", encoding="utf-8") as f:
-            if new:
-                f.write("task_id,new_plate,approved_at\n")
-            f.write(f"{args[1]},{args[2]},{args[3] if len(args) > 3 else ''}\n")
-        print(f"Saved: {args[1]} -> {args[2]}")
+        approve_swap(args[1], args[2], args[3] if len(args) > 3 else "")
         return
+    if args and args[0] == "--save-ai":
+        sys.exit(0 if save_ai(args[1]) else 1)
+    if args and args[0] == "--decide":
+        if len(args) < 4:
+            print("Usage: monitor.py --decide <plate> <option_key> approved|rejected [time]")
+            sys.exit(1)
+        sys.exit(0 if decide(args[1], args[2], args[3], args[4] if len(args) > 4 else "") else 1)
     if args and args[0] == "--next":
         snaps = snapshots()
         last = open(STATE_FILE).read().strip() if os.path.exists(STATE_FILE) else None

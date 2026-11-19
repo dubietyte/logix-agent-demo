@@ -1,0 +1,64 @@
+{
+ "data_time": "2026-11-18 09:30",
+ "decisions": [
+  {
+   "plate": "DEMO23",
+   "headline": "Praleistas FIX iškrovimas Rygoje (09:15). Atvyks apie 11:24 – vėluos 2 val. 10 min.",
+   "cause": "Eilė LT–LV pasienyje",
+   "depends_on": "",
+   "options": [
+    {"key": "keep", "title": "Palikti vilkiką, pranešti klientui naują ETA", "note": "Krovinys viduje – perduoti kitam vilkikui negalima.", "recommended": true,
+     "messages": [
+      {"to": "client", "name": "Riga Retail", "lang": "EN", "text": "DEMO23 is expected to arrive at approx. 11:24, after the fixed unloading time 09:15 (about 2 h 10 min late). The delay is due to the queue at the Lithuania-Latvia border. We apologise."},
+      {"to": "driver", "lang": "LT", "text": "Labas, Tomas! Tęskite kelionę į iškrovimą Rygoje. Numatomas atvykimas – apie 11:24. Informuokite, jei situacija pasikeis."}
+     ]}
+   ]
+  },
+  {
+   "plate": "DEMO18",
+   "headline": "Vairuotojui baigėsi laikas – turi sustoti dabar. Iškrovimą Klaipėdoje (19.11 00:15) vis tiek spės.",
+   "cause": "Bed 0:00 – privalomas dienos poilsis",
+   "depends_on": "Sutrumpintą 9 val. poilsį galima naudoti tik 3 kartus tarp savaitinių poilsių. Jei klientui nereikia anksčiau – geriau 11 val.",
+   "options": [
+    {"key": "rest11", "title": "Stoti dabar, 11 val. poilsis", "note": "Atvyks ~22:51 – vis tiek prieš 00:15.", "recommended": true,
+     "messages": [
+      {"to": "driver", "lang": "RU", "text": "Здравствуйте, Andrej! Немедленно остановитесь на ближайшей безопасной стоянке. Отдых 11 часов. Расчётное прибытие в Клайпеду: около 22:51."}
+     ]},
+    {"key": "rest9", "title": "Stoti dabar, 9 val. sutrumpintas poilsis", "note": "Atvyks ~20:51. Naudoja vieną iš 3 sutrumpintų poilsių.", "recommended": false,
+     "messages": [
+      {"to": "driver", "lang": "RU", "text": "Здравствуйте, Andrej! Немедленно остановитесь на ближайшей безопасной стоянке. Сокращённый отдых 9 часов. Расчётное прибытие в Клайпеду: около 20:51."}
+     ]}
+   ]
+  },
+  {
+   "plate": "DEMO12",
+   "headline": "Sugedo prieš FIX pakrovimą Kaune (10:00). Laisvas DEMO20 jau Kaune – gali perimti krovinį.",
+   "cause": "Gedimas prie Panevėžio",
+   "depends_on": "Krovinio dar nėra viduje, todėl jį galima perduoti. Jei remontas trumpas ar klientas leidžia vėliau – galima laukti DEMO12.",
+   "options": [
+    {"key": "swap", "title": "Perduoti krovinį DEMO20", "note": "Kaune, laisvas, 9:00 val. vairavimo. Spės iki FIX 10:00.", "recommended": true, "swap_to": "DEMO20",
+     "messages": [
+      {"to": "driver", "plate": "DEMO20", "lang": "LT", "text": "Labas, Vytautas! Naujas darbas: pakrovimas ORD-212 Kaune, FIX 10:00 (Nordic Paper). Prašome vykti dabar ir patvirtinti."},
+      {"to": "driver", "lang": "LT", "text": "Labas, Marius! Krovinį ORD-212 perima DEMO20. Praneškite, kiek užtruks remontas."},
+      {"to": "client", "name": "Nordic Paper", "lang": "EN", "text": "Due to a technical issue, loading ORD-212 in Kaunas will be done by truck DEMO20. It will arrive before the fixed loading time 10:00."}
+     ]},
+    {"key": "wait", "title": "Laukti DEMO12 remonto", "note": "Atvyks ne anksčiau nei ~10:29 + remontas. FIX 10:00 bus praleistas.", "recommended": false,
+     "messages": [
+      {"to": "client", "name": "Nordic Paper", "lang": "EN", "text": "Due to a technical issue, DEMO12 will arrive for loading ORD-212 in Kaunas later than 10:00. We will confirm the new time as soon as possible. We apologise."}
+     ]}
+   ]
+  },
+  {
+   "plate": "DEMO07",
+   "headline": "Vėluos į iškrovimą Kolbiel apie 1 val. 15 min. (atvyks ~12:29 vietoj 11:15).",
+   "cause": "Kamštis prie Balstogės + 45 min. pertrauka",
+   "depends_on": "",
+   "options": [
+    {"key": "keep", "title": "Palikti vilkiką, įspėti klientą", "note": "Krovinys viduje. Vairuotojui pranešti nereikia.", "recommended": true,
+     "messages": [
+      {"to": "client", "name": "Baltic Foods", "lang": "EN", "text": "DEMO07 is expected to arrive at approx. 12:29, about 1 hour 15 minutes late. The delay is caused by traffic near Bialystok and the required driver break. We apologise."}
+     ]}
+   ]
+  }
+ ]
+}

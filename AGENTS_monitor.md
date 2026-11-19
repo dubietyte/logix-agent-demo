@@ -60,7 +60,34 @@ Driver msg: none needed
 Approve? (yes / no / change)
 ```
 - Wait for "yes" before treating anything as done. If "no" or "change", ask what to change and make a new plan.
-- After "yes" to a swap, save it right away: `python3 /data/logistics-agent/monitor.py --approve <task_id> <new_plate> <check time>` (example: `--approve ORD-103 DEMO05 15:00`). Then answer in one line what was approved.
+- After the dispatcher answers, save it right away with `--decide` (same `--dir` as the check): `python3 /data/logistics-agent/monitor.py --decide <plate> <option key> approved|rejected <time>` (example: `--decide DEMO12 swap approved 09:35`). For an option with "swap_to" this also saves the swap (-> [HANDLED] next check), so `--approve` is not needed any more (it still works). Then answer in one line what was approved.
+
+### Step 5 - save your decisions for the Logix screen (after every check with a NEW problem)
+monitor.py already saved the maths to the file shown in the line `[RESULTS FILE]`. Add YOUR part so the screen can show it:
+1. Write a JSON file with your file tool to `<the same results folder>/ai_<HHMM>.json` (example: `/data/logistics-agent/data/day_test/results/ai_0930.json`). Exact shape (example: `data/day_test/example_ai_09-30.json`):
+```
+{"data_time": "<data_time of the check, exactly>",
+ "decisions": [
+  {"plate": "DEMO12",
+   "headline": "one sentence for the dispatcher: what happened + what it means",
+   "cause": "short reason",
+   "depends_on": "what could change the decision (empty if nothing)",
+   "options": [
+    {"key": "swap", "title": "short action", "note": "one line why / numbers", "recommended": true, "swap_to": "DEMO20",
+     "messages": [{"to": "driver", "plate": "DEMO20", "lang": "LT", "text": "Labas, Vytautas! ..."},
+                  {"to": "driver", "lang": "LT", "text": "Labas, Marius! ..."},
+                  {"to": "client", "name": "Nordic Paper", "lang": "EN", "text": "..."}]},
+    {"key": "wait", "title": "...", "note": "...", "recommended": false, "messages": [...]}
+   ]}
+ ]}
+```
+2. Run `python3 /data/logistics-agent/monitor.py [--dir <same dir>] --save-ai <that file>`. If it says NOT SAVED, fix exactly what it lists and run it again. WARNING lines: fix if you can.
+Rules for this file:
+- One entry per NEW problem, in the [PROBLEM n of N] order. ONGOING problems are copied from the last check automatically; write them again only if the plan or the client ETA changed.
+- headline, cause, depends_on, title, note: in **Lithuanian** (the screen language). Messages: the client's / driver's language, same text as in your chat answer.
+- 1 to 4 options, exactly ONE "recommended": true (your decision from Step 2). Add a second option only when there is a real alternative the dispatcher might choose (e.g. 11 h vs 9 h rest, swap vs wait); say in depends_on what decides it. Dispatchers told us the right call is "situational" - show the choice, don't hide it.
+- "swap_to" only with a plate from that problem's "replacement candidates", never when goods are on board. A driver message for the replacement truck needs "plate": "<its plate>".
+- Never put numbers in the file that monitor.py did not give you.
 - Remember what the dispatcher approved or rejected in this session and use it in the next checks (for example: if he rejected a swap to a RU-speaking driver for this client, don't suggest it again).
 
 ### Rules
