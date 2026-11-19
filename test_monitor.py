@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Logix automatic tests: 12 edge-case scenarios + the 30-truck test day.
+"""Logix automatic tests: edge-case scenarios + the 30-truck test day.
 Run: python3 test_monitor.py   -> prints a PASS/FAIL table (takes about 1 second)
 """
 import contextlib, io, os, shutil, sys, tempfile, time
@@ -25,7 +25,7 @@ def free(**kw):
 
 def kinds(rows):
     p, f, ok, unk = m.check(rows)
-    return {r["plate"]: sorted(k for k, _ in x) for r, x in p}, [r["plate"] for r, _ in f], unk
+    return {r["plate"]: sorted(k for k, _ in x if k != "INFO") for r, x in p}, [r["plate"] for r, _ in f], unk
 
 
 def run_report(rows, prev=None, decisions=None):
@@ -210,6 +210,39 @@ def _():
     return order == ["MISSED", "REST_NOW", "LATE_FIX", "LATE_BIG", "LATE_SMALL", "REST_SOON"]
 
 
+@test("S22 date-only task time (real LocTracker) -> no crash, deadline = end of that day")
+def _():
+    k, f, _ = kinds([row(task_time="2026-11-19", km_left="239")])
+    out = run_report([row(task_time="2026-11-18", km_left="900")])
+    return k == {} and f == [] and "LATE" in out and "date only" in out
+
+
+@test("S23 at unloading address, FIX tomorrow, goods on board -> waiting, NOT free (real 18 Nov case)")
+def _():
+    rows = [row(status="resting", km_left="0", task_fix="yes", task_time="2026-11-19 07:00", bed="0:27", clock="1:47")]
+    k, f, _ = kinds(rows)
+    return k == {} and f == [] and "waiting for 19.11 07:00 FIX - not free" in run_report(rows)
+
+
+@test("S24 at loading address, no next task -> ask dispatcher, NOT free (real 18 Nov case)")
+def _():
+    k, f, unk = kinds([row(task_type="loading", goods_on_board="unknown", km_left="0", task_time="2026-11-18", status="resting")])
+    return k == {} and f == [] and any("NO unloading task" in u for u in unk)
+
+
+@test("S25 resting > 11 h with open task -> STANDING (ask why, never guess); 10 h -> nothing")
+def _():
+    k, _, _ = kinds([row(status="resting", status_for="11:59", task_time="2026-11-19", km_left="239"),
+                     row(plate="T02", status="resting", status_for="10:00", task_time="2026-11-19", km_left="239")])
+    return k == {"T01": ["STANDING"]}
+
+
+@test("S26 unknown driver language -> English + ask the dispatcher")
+def _():
+    out = run_report([row(driver="", driver_lang="unknown", bed="0:00", task_time="2026-11-20 10:00")])
+    return 'UNKNOWN - write the driver\'s message in English, starting with: "Hello!"' in out
+
+
 # ---- 30-truck test day: expected problems per check ----
 DAY = {
     "08-00": {"DEMO23": ["LATE"]},
@@ -236,11 +269,11 @@ for hhmm, exp in DAY.items():
 
 
 # ---- private real-data check (only where the real file exists, e.g. in Hermes; never on GitHub) ----
-REAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "real_test")
-if os.path.exists(os.path.join(REAL, "expected.csv")):
-    import csv as _csv
-    for exp in _csv.DictReader(open(os.path.join(REAL, "expected.csv"), encoding="utf-8")):
-        def make(exp=exp):
+import csv as _csv, glob as _glob
+for _exp_file in sorted(_glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "real_*", "expected.csv"))):
+    REAL = os.path.dirname(_exp_file)
+    for exp in _csv.DictReader(open(_exp_file, encoding="utf-8")):
+        def make(exp=exp, REAL=REAL):
             def fn():
                 rows = m.load(os.path.join(REAL, exp["file"]))
                 k, f, unk = kinds(rows)
@@ -253,7 +286,7 @@ if os.path.exists(os.path.join(REAL, "expected.csv")):
                     return plate not in k and plate not in f and not any(u.startswith(plate) for u in unk)
                 return k.get(plate) == sorted(want.split("+"))
             return fn
-        TESTS.append((f"REAL {exp['file']} {exp['plate']} -> {exp['expect']} ({exp['note']})", make()))
+        TESTS.append((f"REAL {os.path.basename(REAL)}/{exp['file']} {exp['plate']} -> {exp['expect']} ({exp['note']})", make()))
 
 
 if __name__ == "__main__":

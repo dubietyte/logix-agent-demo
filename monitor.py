@@ -27,6 +27,7 @@ BREAK_H = 0.75          # 45-min break
 DAILY_REST_H = 11       # normal daily rest (9 h reduced possible)
 LATE_LIMIT_MIN = 15     # report as late if more than this
 REST_SOON_H = 0.75      # warn when less than 0:45 driving / Bed time is left
+STANDING_H = 11         # resting longer than a normal daily rest with an open task -> ask why
 SNAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "snapshots")
 STATE_FILE = os.path.join(SNAP_DIR, ".last_check")
 DECISIONS = os.path.join(SNAP_DIR, "decisions.csv")   # approved swaps: task_id,new_plate,approved_at
@@ -88,8 +89,26 @@ def fmt_h(x):
 
 
 def dt(s):
+    """'2026-11-18 17:00' -> datetime. Date only ('2026-11-19', common in real LocTracker data)
+    -> end of that day 23:59 (task can be done any time that day)."""
     s = (s or "").strip()
-    return datetime.strptime(s, "%Y-%m-%d %H:%M") if s else None
+    if not s:
+        return None
+    if " " not in s:
+        return datetime.strptime(s, "%Y-%m-%d").replace(hour=23, minute=59)
+    return datetime.strptime(s, "%Y-%m-%d %H:%M")
+
+
+def date_only(s):
+    s = (s or "").strip()
+    return bool(s) and " " not in s
+
+
+def when(s, fmt_dt, ref):
+    """Readable task time; date-only tasks say so."""
+    if date_only(s):
+        return f"{fmt_dt:%d.%m} (date only, no time)"
+    return f"{fmt_dt:%H:%M}" if fmt_dt.date() == ref.date() else f"{fmt_dt:%d.%m %H:%M}"
 
 
 def km_between(a_lat, a_lon, b_lat, b_lon):
@@ -144,7 +163,16 @@ def check(rows):
 
         # free truck rules (AGENTS.md); a task counts even without a task number (real LocTracker data)
         no_task = not (r["task_id"].strip() or r["task_type"].strip() or r["task_time"].strip())
-        at_last = (km_left == 0 and not nxt)
+        loading = r["task_type"].strip().lower() == "loading"
+        waiting = task_time is not None and task_time > now          # booked time still ahead (e.g. FIX tomorrow)
+        goods = r["goods_on_board"].strip().lower() == "yes"
+        # at the last address = task done but not closed. NOT free if: loading (goods come on board next),
+        # or waiting for a booked time, or goods still on board (real case 18 Nov: FIX unloading next morning)
+        at_last = (km_left == 0 and not nxt and not loading and not waiting and not goods)
+        if km_left == 0 and not nxt and loading and not no_task:
+            unknown.append(f"{plate}: at the loading address ({r['task_address']}), NO unloading task in the queue - "
+                           f"ask the dispatcher where it goes after loading (and mark loading done in LocTracker). Not a free truck.")
+            continue
         far_next = no_task and nxt and (nxt - now) > timedelta(hours=24)
         if (no_task and not nxt) or far_next or at_last:
             note = "free"
@@ -164,6 +192,10 @@ def check(rows):
             continue
 
         found = []
+        rest_for = hm(r.get("status_for", ""))
+        if resting and rest_for is not None and rest_for > STANDING_H and km_left and km_left > 0:
+            found.append(("STANDING", f"resting {r['status_for']} (longer than an 11 h daily rest) with an open task and "
+                          f"{km_left:.0f} km to go - ask the dispatcher why (weekly rest? border queue? waiting?). Do not guess the reason."))
         # must rest now
         if must_rest:
             txt = f"Bed {r['bed']}, Clock {r['clock']} - driver must stop now"
@@ -190,16 +222,23 @@ def check(rows):
         elif task_time and km_left is not None:
             e, math_txt = eta(now, km_left, clock, cup, bed)
             late_min = (e - task_time).total_seconds() / 60
+            dnote = " (date only, so deadline = end of that day)" if date_only(r["task_time"]) else ""
             if late_min > LATE_LIMIT_MIN:
-                found.append(("LATE", f"ETA {e:%Y-%m-%d %H:%M} vs {r['task_type']} {r['task_time']}{' FIX' if r['task_fix'].lower()=='yes' else ''} -> {fmt_h(late_min/60)} late. Math: {math_txt}"))
-            elif not found:
+                found.append(("LATE", f"ETA {e:%Y-%m-%d %H:%M} vs {r['task_type']} {r['task_time']}{' FIX' if r['task_fix'].lower()=='yes' else ''}{dnote} -> {fmt_h(late_min/60)} late. Math: {math_txt}"))
+            else:
                 fmt = "%H:%M" if e.date() == now.date() else "%d.%m %H:%M"
-                ok.append(f"{plate}: on time (ETA {e:{fmt}}, {r['task_type']} {task_time:{fmt}})")
+                line = f"{plate}: on time (ETA {e:{fmt}}, {r['task_type']} {when(r['task_time'], task_time, now)})"
+                if km_left == 0 and waiting:
+                    line = f"{plate}: already at the {r['task_type']} address, waiting for {when(r['task_time'], task_time, now)}{' FIX' if r['task_fix'].lower()=='yes' else ''} - not free"
+                if found:
+                    found.append(("INFO", line.split(": ", 1)[1]))
+                else:
+                    ok.append(line)
         if not found and task_time and (km_left is None or (clock is None and bed is None)):
             miss = [k for k in ("km_left", "clock", "bed") if num(r[k]) is None and hm(r[k]) is None] if km_left is None \
                 else [k for k in ("clock", "cup", "bed") if hm(r[k]) is None]
             unknown.append(f"{plate} ({r['task_id']} {r['task_type']} {r['task_time']}): cannot check, unknown {', '.join(miss)} - ask the dispatcher")
-        if found:
+        if found and any(k != "INFO" for k, _ in found):
             problems.append((r, found))
     return problems, free, ok, unknown
 
@@ -218,8 +257,10 @@ def priority(item):
             mm = re.search(r"-> (\d+):(\d\d) late", txt)
             delay = int(mm.group(1)) * 60 + int(mm.group(2)) if mm else 0
             k = (2 if r["task_fix"].lower() == "yes" else 3, -delay)
-        else:
+        elif kind == "REST_SOON":
             k = (4, 0)
+        else:   # STANDING, INFO
+            k = (5, 0)
         best = min(best, k)
     return best
 
@@ -263,9 +304,13 @@ def report(path, prev_path=None):
     else:
         print(f"STATUS: {len(problems)} truck(s) with problems")
     for n, (r, found) in enumerate(problems, 1):
-        print(f"\n[PROBLEM {n} of {len(problems)}] {r['plate']} (driver {r['driver']}, lang {r['driver_lang']}) at {r['location']}")
-        print(f"  driver message language: {LANG.get(r['driver_lang'].upper(), r['driver_lang'])} - write this driver's message ONLY in this language, "
-              f"starting with: \"{greeting(r)}\"")
+        print(f"\n[PROBLEM {n} of {len(problems)}] {r['plate']} (driver {r['driver'].strip() or 'name not given'}, lang {r['driver_lang']}) at {r['location']}")
+        if r["driver_lang"].strip().upper() in LANG:
+            print(f"  driver message language: {LANG[r['driver_lang'].strip().upper()]} - write this driver's message ONLY in this language, "
+                  f"starting with: \"{greeting(r)}\"")
+        else:
+            print(f"  driver message language: UNKNOWN - write the driver's message in English, starting with: \"{greeting(r)}\", "
+                  f"and ask the dispatcher which language the driver speaks")
         if not (r["task_type"].strip() or r["task_time"].strip()):
             print("  no active task (free truck)")
             for kind, txt in found:
@@ -274,6 +319,9 @@ def report(path, prev_path=None):
             continue
         print(f"  task {r['task_id'] or '(no number)'}: {r['task_type']} at {r['task_address']} for client {r['client']}, goods on board: {r['goods_on_board']}")
         for kind, txt in found:
+            if kind == "INFO":
+                print(f"  - info: {txt}")
+                continue
             tag = "ONGOING" if (r["plate"], kind) in prev_keys else "NEW"
             print(f"  - {kind} [{tag}]: {txt}")
         if r["goods_on_board"].lower() == "yes":

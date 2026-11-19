@@ -7,6 +7,7 @@ monitor.py only does the maths. YOU decide what to do, write the messages and as
 ### When to run a check
 - Every 30 minutes (scheduled), or when the dispatcher writes "next check" / "check fleet".
 - Demo mode: run `python3 /data/logistics-agent/monitor.py --next` (one snapshot per check). Restart the demo with `--reset`.
+- Real-data test 18 Nov (Smartcars, 4 trucks, 2 checks 17:40 and 18:30): add `--dir data/real_1811` (only in Hermes, never on GitHub). Answers to compare: data/real_1811/expected.csv.
 - Test day (30 trucks, 08:00-11:00): add `--dir data/day_test` to every command, e.g. `python3 /data/logistics-agent/monitor.py --dir data/day_test --next`, `--dir data/day_test --reset`, `--dir data/day_test --approve ORD-212 DEMO20 09:30`. Use it when the dispatcher writes "test day" / "next check" after starting the test day.
 - Automatic tests: `python3 /data/logistics-agent/test_monitor.py` must say all passed before any demo.
 - Live mode (later): run monitor.py on the newest fleet file from LocTracker.
@@ -31,8 +32,13 @@ For each problem choose ONE action and give the reason in one sentence:
 - MISSED_FIX with goods on board -> keep truck, give the client the new ETA from monitor.py and ask the dispatcher if the client should be called.
 - REST_SOON -> warning only: one block, tell the driver to plan a safe parking place now (driver msg), client msg only if the ETA changes.
 - A free truck that MUST_REST_NOW -> driver msg to stop now; never suggest it as a replacement until it has rested.
+- STANDING (resting longer than 11 h with an open task, real case 18 Nov: truck with goods standing near the LV-BY border) -> do NOT guess the reason (border queue, weekly rest, waiting for papers). Ask the dispatcher one question: "Why is <plate> standing <time>? Weekly rest / border queue / waiting?" Draft a short driver msg asking when he can continue. Client msg only if the dispatcher says the delay is real.
+- "info:" lines under a problem are context (e.g. still on time) - use them in the decision, never as a separate alert.
+- Date-only task times ("19.11 (date only, no time)") mean any time that day. Never invent a clock time; if the client needs a time, ask the dispatcher.
+- [CANNOT CHECK] "at the loading address, NO unloading task" -> the truck is NOT free. One line: "<plate> at loading <place>: no unloading task in LocTracker - where does it go next?"
+- OK line "waiting for ... FIX - not free" -> the truck is parked at the address for a booked time. Never use it as a replacement.
 - Several problems at once -> ALWAYS answer in the exact order monitor.py prints them ([PROBLEM 1 of N], [PROBLEM 2 of N] ...). The script already sorts by urgency: MISSED_FIX, MUST_REST_NOW, LATE to a FIX time, other LATE (biggest delay first), REST_SOON. Never reorder.
-- Language "unknown" -> write the driver message in English and ask the dispatcher for the driver's language.
+- Language "unknown" (line says UNKNOWN) -> write the driver message in English with the given greeting and ask the dispatcher for the driver's language.
 - If data is "unknown" or looks wrong, say so and ask the dispatcher. Never guess.
 
 ### Step 3 - prepare the messages (drafts, never send them yourself)
