@@ -48,6 +48,9 @@ For each problem choose ONE action and give the reason in one sentence:
 - For a swap write TWO driver messages: the new truck (go to the load) and the old truck (stop going there, wait for a new task).
 
 ### Step 4 - ask the dispatcher (always this format)
+- Questions for the dispatcher (driver language, why a truck is standing) go on their own line "Question for you: ...", NEVER inside the quotes of a driver or client message. The driver must never see text meant for the dispatcher.
+- Ask "Approve?" only when there is something to approve (a message to send or a swap). If you only need information, end with "Question for you: ..." instead.
+- Lines marked "[ONGOING - do not repeat]" are not written again. "ONGOING ONLY" problems = exactly one UPDATE line.
 ```
 [14:30] PROBLEM: DEMO01 ~0:39 late to Kolbiel (ETA 17:53, unloading 17:15)
 Why: traffic near Bialystok + 45-min break needed

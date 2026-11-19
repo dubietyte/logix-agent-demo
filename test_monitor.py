@@ -51,7 +51,7 @@ def run_report(rows, prev=None, decisions=None):
 def _write(path, rows):
     import csv
     with open(path, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=list(BASE)); w.writeheader(); w.writerows(rows)
+        w = csv.DictWriter(fh, fieldnames=list(BASE) + ["status_for"], restval=""); w.writeheader(); w.writerows(rows)
 
 
 TESTS = []
@@ -240,7 +240,17 @@ def _():
 @test("S26 unknown driver language -> English + ask the dispatcher")
 def _():
     out = run_report([row(driver="", driver_lang="unknown", bed="0:00", task_time="2026-11-20 10:00")])
-    return 'UNKNOWN - write the driver\'s message in English, starting with: "Hello!"' in out
+    return 'UNKNOWN - write the driver\'s message in English, starting with: "Hello!"' in out and "SEPARATE line" in out
+
+
+@test("S27 second check: ongoing-only problem -> one-line UPDATE; old CANNOT CHECK / free trucks not repeated")
+def _():
+    st = row(status="resting", status_for="11:06", task_time="2026-11-19", km_left="239")
+    ld = row(plate="L1", task_type="loading", goods_on_board="unknown", km_left="0", task_time="2026-11-18", status="resting")
+    fr = free(plate="F1")
+    out = run_report([dict(st, status_for="11:59"), ld, fr], prev=[st, ld, fr])
+    return ("ONGOING ONLY (STANDING)" in out and "replacement" not in out.split("[FREE")[0]
+            and "[ONGOING - do not repeat] L1" in out and "[ONGOING - do not repeat] F1" in out)
 
 
 # ---- 30-truck test day: expected problems per check ----

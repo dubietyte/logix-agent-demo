@@ -285,11 +285,14 @@ def replacements(task_row, free):
 
 def report(path, prev_path=None):
     rows = load(path)
-    prev_keys = set()
+    prev_keys, prev_unknown, prev_free = set(), set(), set()
     if prev_path and os.path.exists(prev_path):
-        for r, found in check(load(prev_path))[0]:
+        pp, pf, _, pu = check(load(prev_path))
+        for r, found in pp:
             for kind, _ in found:
                 prev_keys.add((r["plate"], kind))
+        prev_unknown = {u.split(" ")[0].rstrip(":") for u in pu}
+        prev_free = {r["plate"] for r, _ in pf}
 
     problems, free, ok, unknown = check(rows)
     swaps = approved_swaps()
@@ -310,12 +313,19 @@ def report(path, prev_path=None):
                   f"starting with: \"{greeting(r)}\"")
         else:
             print(f"  driver message language: UNKNOWN - write the driver's message in English, starting with: \"{greeting(r)}\", "
-                  f"and ask the dispatcher which language the driver speaks")
+                  f"(the quoted message stays English only). Ask the dispatcher about the language on a SEPARATE line: \"Question for you: which language does the driver speak?\"")
         if not (r["task_type"].strip() or r["task_time"].strip()):
             print("  no active task (free truck)")
             for kind, txt in found:
                 tag = "ONGOING" if (r["plate"], kind) in prev_keys else "NEW"
                 print(f"  - {kind} [{tag}]: {txt}")
+            continue
+        if all(k == "INFO" or (r["plate"], k) in prev_keys for k, _ in found):
+            kinds_txt = ", ".join(k for k, _ in found if k != "INFO")
+            print(f"  ONGOING ONLY ({kinds_txt}) -> write ONE line: \"UPDATE {r['plate']}: <what changed>, plan unchanged.\" "
+                  f"No decision block, no messages, no Approve. Skip it if nothing important changed.")
+            for kind, txt in found:
+                print(f"  - {'info' if kind == 'INFO' else kind + ' [ONGOING]'}: {txt}")
             continue
         print(f"  task {r['task_id'] or '(no number)'}: {r['task_type']} at {r['task_address']} for client {r['client']}, goods on board: {r['goods_on_board']}")
         for kind, txt in found:
@@ -342,14 +352,16 @@ def report(path, prev_path=None):
               f"Do not suggest it again. {r['plate']} is free for another job; {newp} is busy with {r['task_id']}.")
     print("\n[FREE TRUCKS]")
     for r, note in free or []:
-        print(f"  {r['plate']} at {r['location']} - {note} (Clock {r['clock']}, Bed {r['bed']})")
+        tag = "[ONGOING - do not repeat]" if r["plate"] in prev_free else "[NEW]"
+        print(f"  {tag} {r['plate']} at {r['location']} - {note} (Clock {r['clock']}, Bed {r['bed']})")
     if not free:
         print("  none")
     if unknown:
         print("\n[CANNOT CHECK] (data missing - do not guess, ask the dispatcher)")
         for line in unknown:
-            print("  " + line)
-    print("\n[OK]")
+            tag = "[ONGOING - do not repeat]" if line.split(" ")[0].rstrip(":") in prev_unknown else "[NEW]"
+            print(f"  {tag} {line}")
+    print("\n[OK]  (one short line per truck; skip trucks already reported OK in the last check)")
     for line in ok:
         print("  " + line)
 
